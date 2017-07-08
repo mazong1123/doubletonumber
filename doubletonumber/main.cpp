@@ -27,7 +27,7 @@ uint64_t intPow(uint64_t x, uint64_t p)
         return x;
     }
 
-    int tmp = intPow(x, p / 2);
+    uint64_t tmp = intPow(x, p / 2);
     if (p % 2 == 0)
     {
         return tmp * tmp;
@@ -108,7 +108,7 @@ vector<uint64_t> scale(uint64_t r, uint64_t s, uint64_t mh, uint64_t ml, uint64_
     return res;
 }
 
-vector<uint64_t> floatNumToDigits(double v, uint64_t f, int e, int minExp, int p, uint64_t inputBase, uint64_t outputBase)
+vector<uint64_t> floatNumToDigits(double v, uint64_t f, int e, int minExp, int p, uint32_t inputBase, uint32_t outputBase)
 {
     // f is even: isRound = true. f is odd: isRound = false.
     bool isRound = !(f & 1);
@@ -142,7 +142,7 @@ int main()
 {
     //vector<uint64_t> res = generate(22042, 200000, 1, 1, 10, false, false);
     //vector<uint64_t> res = scale(22042, 20000, 1, 1, 0, 10, false, false);
-    vector<uint64_t> res = floatNumToDigits(1.1021, 11021, -4, -5, 5, 10, 10);
+    vector<uint64_t> res = floatNumToDigits(1.1021, 11021, -4, -308, 17, 10, 10);
 
     for (int i = 0; i < res.size(); ++i)
     {
