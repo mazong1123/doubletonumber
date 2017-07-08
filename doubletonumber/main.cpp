@@ -5,149 +5,184 @@
 
 using namespace std;
 
-unsigned int getExponent(double d)
-{
-    return (*((unsigned int*)&d + 1) >> 20) & 0x000007FF;
-}
+#define SCALE_NAN 0x80000000
+#define SCALE_INF 0x7FFFFFFF
+#define NUMBER_MAXDIGITS 50
 
-uint64_t getMantissa(double d)
+struct NUMBER
 {
-    return (*(uint64_t*)&d) & 0x000FFFFFFFFFFFFF;
-}
+    int precision;
+    int scale;
+    int sign;
+    wchar_t digits[NUMBER_MAXDIGITS + 1];
+    wchar_t* allDigits;
+    NUMBER() : precision(0), scale(0), sign(0), allDigits(NULL) {}
+};
 
-uint64_t intPow(uint64_t x, uint64_t p)
+struct FPDOUBLE
 {
-    if (p == 0)
+#if BIGENDIAN
+    unsigned int sign : 1;
+    unsigned int exp : 11;
+    unsigned int mantHi : 20;
+    unsigned int mantLo;
+#else
+    unsigned int mantLo;
+    unsigned int mantHi : 20;
+    unsigned int exp : 11;
+    unsigned int sign : 1;
+#endif
+};
+
+char * __cdecl
+_ecvt2(double value, int count, int * dec, int * sign)
+{
+
+    char* lpStartOfReturnBuffer = new char[348];
+
+    char TempBuffer[348];
+
+    *dec = *sign = 0;
+
+    if (value < 0.0)
     {
-        return 1;
+        *sign = 1;
     }
 
-    if (p == 1)
     {
-        return x;
-    }
-
-    uint64_t tmp = intPow(x, p / 2);
-    if (p % 2 == 0)
-    {
-        return tmp * tmp;
-    }
-    else
-    {
-        return x * tmp * tmp;
-    }
-}
-
-vector<uint64_t> generate(uint64_t r, uint64_t s, uint64_t mh, uint64_t ml, uint32_t outputBase, bool isLowOK, bool isHighOK)
-{
-    lldiv_t divResult = lldiv(r * outputBase, s);
-    mh = mh * outputBase;
-    ml = ml * outputBase;
-
-    uint64_t q = divResult.quot;
-    r = divResult.rem;
-
-    vector<uint64_t> d(1, q);
-
-    bool tc1 = isLowOK ? r <= ml : r < ml;
-    
-    uint64_t high = r + mh;
-    bool tc2 = isHighOK ? high >= s : high > s;
-
-    if (!tc1)
-    {
-        if (!tc2)
+        // we have issue #10290 tracking fixing the sign of 0.0 across the platforms
+        if (value == 0.0)
         {
-            vector<uint64_t> temp = generate(r, s, mh, ml, outputBase, isLowOK, isHighOK);
-            d.insert(d.end(), temp.begin(), temp.end());
+            for (int j = 0; j < count; j++)
+            {
+                lpStartOfReturnBuffer[j] = '0';
+            }
+            lpStartOfReturnBuffer[count] = '\0';
+            goto done;
+        }
+
+        int tempBufferLength = snprintf(TempBuffer, 348, "%.40e", value);
+        
+        //
+        // Calculate the exponent value
+        //
+
+        int exponentIndex = strrchr(TempBuffer, 'e') - TempBuffer;
+        
+        int i = exponentIndex + 1;
+        int exponentSign = 1;
+        if (TempBuffer[i] == '-')
+        {
+            exponentSign = -1;
+            i++;
+        }
+        else if (TempBuffer[i] == '+')
+        {
+            i++;
+        }
+
+        int exponentValue = 0;
+        while (i < tempBufferLength)
+        {
+            _ASSERTE(TempBuffer[i] >= '0' && TempBuffer[i] <= '9');
+            exponentValue = exponentValue * 10 + ((unsigned char)TempBuffer[i] - (unsigned char) '0');
+            i++;
+        }
+        exponentValue *= exponentSign;
+
+        //
+        // Determine decimal location.
+        // 
+
+        if (exponentValue == 0)
+        {
+            *dec = 1;
         }
         else
         {
-            d.back()++;
+            *dec = exponentValue + 1;
         }
 
-        return d;
-    }
-    else if (!tc2)
-    {
-        return d;
-    }
-    else if (r * 2 < s)
-    {
-        return d;
-    }
-    else
-    {
-        d.back()++;
-        return d;
-    }
+        //
+        // Copy the string from the temp buffer upto precision characters, removing the sign, and decimal as required.
+        // 
 
-}
-
-vector<uint64_t> scale(uint64_t r, uint64_t s, uint64_t mh, uint64_t ml, uint64_t k, uint32_t outputBase, bool isLowOK, bool isHighOK)
-{
-    uint64_t temp = r + mh;
-    bool cr = isHighOK ? temp >= s : temp > s;
-    if (cr)
-    {
-        return scale(r, s * outputBase, mh, ml, k + 1, outputBase, isLowOK, isHighOK);
-    }
-
-    temp = (r + mh) * outputBase;
-    cr = isHighOK ? temp < s : temp <= s;
-    if (cr)
-    {
-        return scale(r * outputBase, s, mh * outputBase, ml * outputBase, k - 1, outputBase, isLowOK, isHighOK);
-    }
-
-    vector<uint64_t> res(1, k);
-    vector<uint64_t> tr = generate(r, s, mh, ml, outputBase, isLowOK, isHighOK);
-
-    res.insert(res.end(), tr.begin(), tr.end());
-
-    return res;
-}
-
-vector<uint64_t> floatNumToDigits(double v, uint64_t f, int e, int minExp, int p, uint32_t inputBase, uint32_t outputBase)
-{
-    // f is even: isRound = true. f is odd: isRound = false.
-    bool isRound = !(f & 1);
-    if (e >= 0)
-    {
-        if (f != intPow(inputBase, p - 1))
+        i = 0;
+        int mantissaIndex = 0;
+        while (i < count && mantissaIndex < exponentIndex)
         {
-            uint64_t be = intPow(inputBase, e);
-            
-            return scale(f * be * 2, 2, be, be, 0, outputBase, isRound, isRound);
+            if (TempBuffer[mantissaIndex] >= '0' && TempBuffer[mantissaIndex] <= '9')
+            {
+                lpStartOfReturnBuffer[i] = TempBuffer[mantissaIndex];
+                i++;
+            }
+            mantissaIndex++;
+        }
+
+        while (i < count)
+        {
+            lpStartOfReturnBuffer[i] = '0'; // append zeros as needed
+            i++;
+        }
+
+        lpStartOfReturnBuffer[i] = '\0';
+
+        //
+        // Round if needed
+        //
+
+        if (mantissaIndex >= exponentIndex || TempBuffer[mantissaIndex] < '5')
+        {
+            goto done;
+        }
+
+        i = count - 1;
+        while (lpStartOfReturnBuffer[i] == '9' && i > 0)
+        {
+            lpStartOfReturnBuffer[i] = '0';
+            i--;
+        }
+
+        if (i == 0 && lpStartOfReturnBuffer[i] == '9')
+        {
+            lpStartOfReturnBuffer[i] = '1';
+            (*dec)++;
         }
         else
         {
-            uint64_t be = intPow(inputBase, e);
-            uint64_t be1 = be * inputBase;
-
-            return scale(f * be1 * 2, inputBase * 2, be1, be, 0, outputBase, isRound, isRound);
+            lpStartOfReturnBuffer[i]++;
         }
     }
-    else if (e == minExp || f != intPow(inputBase, p - 1))
+
+done:
+
+    return lpStartOfReturnBuffer;
+}
+
+void DoubleToNumber(double value, int precision, NUMBER* number)
+{
+    number->precision = precision;
+    if (((FPDOUBLE*)&value)->exp == 0x7FF)
     {
-        return scale(f * 2, intPow(inputBase, -e) * 2, 1, 1, 0, outputBase, isRound, isRound);
+        number->scale = (((FPDOUBLE*)&value)->mantLo || ((FPDOUBLE*)&value)->mantHi) ? SCALE_NAN : SCALE_INF;
+        number->sign = ((FPDOUBLE*)&value)->sign;
+        number->digits[0] = 0;
     }
     else
     {
-        return scale(f * inputBase * 2, intPow(inputBase, 1 - e) * 2, inputBase, 1, 0, outputBase, isRound, isRound);
+        char* src = _ecvt2(value, precision, &number->scale, &number->sign);
+        wchar_t* dst = number->digits;
+        if (*src != '0')
+        {
+            while (*src) *dst++ = *src++;
+        }
+        *dst = 0;
     }
 }
 
 int main()
 {
-    //vector<uint64_t> res = generate(22042, 200000, 1, 1, 10, false, false);
-    //vector<uint64_t> res = scale(22042, 20000, 1, 1, 0, 10, false, false);
-    vector<uint64_t> res = floatNumToDigits(1.1021, 11021, -4, -308, 17, 10, 10);
-
-    for (int i = 0; i < res.size(); ++i)
-    {
-        cout << res[i] << endl;
-    }
-    
+    NUMBER number;
+    DoubleToNumber(7.9228162514264338e+28, 15, &number);
     return 0;
 }
