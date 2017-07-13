@@ -8,18 +8,55 @@ using namespace std;
 #define SCALE_NAN 0x80000000
 #define SCALE_INF 0x7FFFFFFF
 #define NUMBER_MAXDIGITS 50
-#define BIGSIZE 24
 
 #define SLL(x, y, z, k) {\
-   uint64_t x_sll = (x);\
+   uint32_t x_sll = (x);\
    (z) = (x_sll << (y)) | (k);\
-   (k) = x_sll >> (64 - (y));\
+   (k) = x_sll >> (32 - (y));\
 }
 
-struct BigNum
+class BigNum
 {
-    int len;
-    uint64_t blocks[BIGSIZE];
+public:
+    BigNum()
+        :m_len(0)
+    {
+    }
+
+    ~BigNum()
+    {
+    }
+
+    void setUInt32(uint32_t value)
+    {
+        m_len = 1;
+        m_blocks[0] = 1;
+    }
+
+    void setUInt64(uint64_t value)
+    {
+        m_len = 0;
+        m_blocks[0] = (uint32_t)(value & 0xFFFFFFFF);
+        m_len++;
+
+        uint32_t highBits = (uint32_t)(value >> 32);
+        if (highBits != 0)
+        {
+            m_blocks[1] = highBits;
+            m_len++;
+        }
+    }
+
+    void extendBlock(uint32_t newBlock)
+    {
+        m_blocks[m_len] = newBlock;
+        ++m_len;
+    }
+
+private:
+    static const int BIGSIZE = 24;
+    int m_len;
+    uint32_t m_blocks[BIGSIZE];
 };
 
 struct NUMBER
@@ -47,45 +84,49 @@ struct FPDOUBLE
 #endif
 };
 
-void shortShiftLeft(uint64_t input, int shift, BigNum* output)
+void uint64ShiftLeft(uint64_t input, int shift, BigNum* output)
 {
-    int shiftBlocks = shift / 64;
-    int remaningToShiftBits = shift % 64;
-    int desLen = shiftBlocks;
+    int shiftBlocks = shift / 32;
+    int remaningToShiftBits = shift % 32;
 
-    uint64_t* pDesBlocks = output->blocks;
     for (int i = 0; i < shiftBlocks; ++i)
     {
         // If blocks shifted, we should fill the corresponding blocks with zero.
-        *pDesBlocks++ = 0;
+        output->extendBlock(0);
     }
 
     if (remaningToShiftBits == 0)
     {
-        // We shift 64 * n (n >= 1) bits. No remaining bits.
-        *pDesBlocks = input;
+        // We shift 32 * n (n >= 1) bits. No remaining bits.
+        output->extendBlock((uint32_t)(input & 0xFFFFFFFF));
+
+        uint32_t highBits = (uint32_t)(input >> 32);
+        if (highBits != 0)
+        {
+            output->extendBlock(highBits);
+        }
     }
     else
     {
-        // We have remaining bits to shift, extend the block.
-        ++desLen;
-
         // Extract the high position bits which would be shifted out of range.
-        uint64_t highPositionBits = input >> (64 - remaningToShiftBits);
+        uint32_t highPositionBits = (uint32_t)input >> (32 + 32 - remaningToShiftBits);
 
         // Shift the input. The result should be stored to current block.
-        *pDesBlocks = input << remaningToShiftBits;
+        uint64_t shiftedInput = input << remaningToShiftBits;
+        output->extendBlock(shiftedInput & 0xFFFFFFFF);
+
+        uint32_t highBits = (uint32_t)(input >> 32);
+        if (highBits != 0)
+        {
+            output->extendBlock(highBits);
+        }
+
         if (highPositionBits != 0)
         {
             // If the high position bits is not 0, we should store them to next block.
-            *++pDesBlocks = highPositionBits;
-            
-            // Extend the length accordingly.
-            ++desLen;
+            output->extendBlock(highPositionBits);
         }
     }
-
-    output->len = desLen;
 }
 
 /*void bigShiftLeft(BigNum* input, int shiftBits, BigNum* output)
@@ -153,17 +194,15 @@ _ecvt2(double value, int count, int * dec, int * sign)
     if (realExponent > 0)
     {
         // value = (realMantissa * 2^realExponent) / (1)
-        shortShiftLeft(realMantissa, realExponent, &numerator);
-        denominator.len = 1;
-        denominator.blocks[0] = 1;
+        uint64ShiftLeft(realMantissa, realExponent, &numerator);
+        denominator.setUInt64(1);
     }
     else
     {
         // value = (realMantissa * 2^realExponent) / (1)
         //       = (realMantissa / 2^(-realExponent)
-        numerator.len = 1;
-        numerator.blocks[0] = realMantissa;
-        shortShiftLeft(1, -realExponent, &denominator);
+        numerator.setUInt64(realMantissa);
+        uint64ShiftLeft(1, -realExponent, &denominator);
     }
 
     return digits;
