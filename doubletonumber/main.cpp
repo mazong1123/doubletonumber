@@ -27,10 +27,82 @@ public:
     {
     }
 
+    uint8_t length() const
+    {
+        return m_len;
+    }
+
+    static void pow10(const int value, BigNum& result)
+    {
+    }
+
+    static void multiply(const BigNum& lhs, const BigNum& rhs, BigNum& result)
+    {
+        const BigNum* pLarge = NULL;
+        const BigNum* pSmall = NULL;
+        if (lhs.m_len < rhs.m_len)
+        {
+            pSmall = &lhs;
+            pLarge = &rhs;
+        }
+        else
+        {
+            pSmall = &rhs;
+            pLarge = &lhs;
+        }
+
+        uint8_t maxResultLength = pSmall->m_len + pLarge->m_len;
+
+        // Zero out result internal blocks.
+        memset(result.m_blocks, 0, sizeof(uint32_t) * BIGSIZE);
+
+        const uint32_t* pLargeBegin = pLarge->m_blocks;
+        const uint32_t* pLargeEnd = pLarge->m_blocks + pLarge->m_len;
+
+        uint32_t* pResultStart = result.m_blocks;
+        const uint32_t* pSmallCurrent = pSmall->m_blocks;
+        const uint32_t* pSmallEnd = pSmallCurrent + pSmall->m_len;
+
+        while (pSmallCurrent != pSmallEnd)
+        {
+            // Multiply each block of large BigNum.
+            if (*pSmallCurrent != 0)
+            {
+                const uint32_t* pLargeCurrent = pLargeBegin;
+                uint32_t* pResultCurrent = pResultStart;
+                uint64_t carry = 0;
+
+                do
+                {
+                    uint64_t product = (uint64_t)(*pResultCurrent) + (uint64_t)(*pSmallCurrent) * (uint64_t)(*pLargeCurrent) + carry;
+                    carry = product >> 32;
+                    *pResultCurrent = (uint32_t)(product & 0xFFFFFFFF);
+
+                    ++pResultCurrent;
+                    ++pLargeCurrent;
+                } while (pLargeCurrent != pLargeEnd);
+
+                *pResultCurrent = (uint32_t)(carry & 0xFFFFFFFF);
+            }
+
+            ++pSmallCurrent;
+            ++pResultStart;
+        }
+
+        if (maxResultLength > 0 && result.m_blocks[maxResultLength - 1] == 0)
+        {
+            result.m_len = maxResultLength - 1;
+        }
+        else
+        {
+            result.m_len = maxResultLength;
+        }
+    }
+
     void setUInt32(uint32_t value)
     {
         m_len = 1;
-        m_blocks[0] = 1;
+        m_blocks[0] = value;
     }
 
     void setUInt64(uint64_t value)
@@ -54,8 +126,8 @@ public:
     }
 
 private:
-    static const int BIGSIZE = 24;
-    int m_len;
+    static const uint8_t BIGSIZE = 24;
+    uint8_t m_len;
     uint32_t m_blocks[BIGSIZE];
 };
 
@@ -84,26 +156,35 @@ struct FPDOUBLE
 #endif
 };
 
-void uint64ShiftLeft(uint64_t input, int shift, BigNum* output)
+void uint64ShiftLeft(uint64_t input, int shift, BigNum& output)
 {
+    /*BigNum rr;
+    BigNum b1;
+    b1.setUInt64(4294967295);
+    
+    BigNum b2;
+    b2.setUInt32(100);
+
+    BigNum::multiply(b1, b2, rr);*/
+
     int shiftBlocks = shift / 32;
     int remaningToShiftBits = shift % 32;
 
     for (int i = 0; i < shiftBlocks; ++i)
     {
         // If blocks shifted, we should fill the corresponding blocks with zero.
-        output->extendBlock(0);
+        output.extendBlock(0);
     }
 
     if (remaningToShiftBits == 0)
     {
         // We shift 32 * n (n >= 1) bits. No remaining bits.
-        output->extendBlock((uint32_t)(input & 0xFFFFFFFF));
+        output.extendBlock((uint32_t)(input & 0xFFFFFFFF));
 
         uint32_t highBits = (uint32_t)(input >> 32);
         if (highBits != 0)
         {
-            output->extendBlock(highBits);
+            output.extendBlock(highBits);
         }
     }
     else
@@ -113,18 +194,18 @@ void uint64ShiftLeft(uint64_t input, int shift, BigNum* output)
 
         // Shift the input. The result should be stored to current block.
         uint64_t shiftedInput = input << remaningToShiftBits;
-        output->extendBlock(shiftedInput & 0xFFFFFFFF);
+        output.extendBlock(shiftedInput & 0xFFFFFFFF);
 
         uint32_t highBits = (uint32_t)(input >> 32);
         if (highBits != 0)
         {
-            output->extendBlock(highBits);
+            output.extendBlock(highBits);
         }
 
         if (highPositionBits != 0)
         {
             // If the high position bits is not 0, we should store them to next block.
-            output->extendBlock(highPositionBits);
+            output.extendBlock(highPositionBits);
         }
     }
 }
@@ -194,7 +275,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
     if (realExponent > 0)
     {
         // value = (realMantissa * 2^realExponent) / (1)
-        uint64ShiftLeft(realMantissa, realExponent, &numerator);
+        uint64ShiftLeft(realMantissa, realExponent, numerator);
         denominator.setUInt64(1);
     }
     else
@@ -202,7 +283,20 @@ _ecvt2(double value, int count, int * dec, int * sign)
         // value = (realMantissa * 2^realExponent) / (1)
         //       = (realMantissa / 2^(-realExponent)
         numerator.setUInt64(realMantissa);
-        uint64ShiftLeft(1, -realExponent, &denominator);
+        uint64ShiftLeft(1, -realExponent, denominator);
+    }
+
+    if (firstDigitExponent > 0)
+    {
+        BigNum poweredValue;
+        BigNum::pow10(firstDigitExponent, poweredValue);
+        BigNum::multiply(denominator, poweredValue, denominator);
+    }
+    else if (firstDigitExponent < 0)
+    {
+        BigNum poweredValue;
+        BigNum::pow10(firstDigitExponent, poweredValue);
+        BigNum::multiply(numerator, poweredValue, numerator);
     }
 
     return digits;
