@@ -8,6 +8,19 @@ using namespace std;
 #define SCALE_NAN 0x80000000
 #define SCALE_INF 0x7FFFFFFF
 #define NUMBER_MAXDIGITS 50
+#define BIGSIZE 24
+
+#define SLL(x, y, z, k) {\
+   uint64_t x_sll = (x);\
+   (z) = (x_sll << (y)) | (k);\
+   (k) = x_sll >> (64 - (y));\
+}
+
+struct BigNum
+{
+    int len;
+    uint64_t blocks[BIGSIZE];
+};
 
 struct NUMBER
 {
@@ -34,129 +47,126 @@ struct FPDOUBLE
 #endif
 };
 
+void shortShiftLeft(uint64_t input, int shift, BigNum* output)
+{
+    int shiftBlocks = shift / 64;
+    int remaningToShiftBits = shift % 64;
+    int desLen = shiftBlocks;
+
+    uint64_t* pDesBlocks = output->blocks;
+    for (int i = 0; i < shiftBlocks; ++i)
+    {
+        // If blocks shifted, we should fill the corresponding blocks with zero.
+        *pDesBlocks++ = 0;
+    }
+
+    if (remaningToShiftBits == 0)
+    {
+        // We shift 64 * n (n >= 1) bits. No remaining bits.
+        *pDesBlocks = input;
+    }
+    else
+    {
+        // We have remaining bits to shift, extend the block.
+        ++desLen;
+
+        // Extract the high position bits which would be shifted out of range.
+        uint64_t highPositionBits = input >> (64 - remaningToShiftBits);
+
+        // Shift the input. The result should be stored to current block.
+        *pDesBlocks = input << remaningToShiftBits;
+        if (highPositionBits != 0)
+        {
+            // If the high position bits is not 0, we should store them to next block.
+            *++pDesBlocks = highPositionBits;
+            
+            // Extend the length accordingly.
+            ++desLen;
+        }
+    }
+
+    output->len = desLen;
+}
+
+/*void bigShiftLeft(BigNum* input, int shiftBits, BigNum* output)
+{
+    int n, m, i, xl, zl;
+    uint64_t *xp, *zp, k;
+
+    n = shiftBits / 64;
+    m = shiftBits % 64;
+    xl = input->l;
+    xp = &(input->d[0]);
+    zl = xl + n;
+    zp = &(output->d[0]);
+    for (i = n; i > 0; i--)
+    {
+        *zp++ = 0;
+    }
+
+    if (m == 0)
+    {
+        for (i = xl; i >= 0; i--)
+        {
+            *zp++ = *xp++;
+        }
+    }
+    else
+    {
+        for (i = xl, k = 0; i >= 0; i--)
+        {
+            SLL(*xp++, m, *zp++, k);
+        }
+        if (k != 0)
+        {
+            *zp = k, zl++;
+        }
+    }
+    output->l = zl;
+}*/
+
+double log10F(double v)
+{
+    return 0;
+}
+
 char * __cdecl
 _ecvt2(double value, int count, int * dec, int * sign)
 {
-
-    char* lpStartOfReturnBuffer = new char[348];
-
-    char TempBuffer[348];
-
-    *dec = *sign = 0;
-
-    if (value < 0.0)
+    //BigNum test;
+    //shortShiftLeft((uint64_t)8796093022207, 40, &test);
+    //shortShiftLeft((uint64_t)100, 3, &test);
+    uint64_t realMantissa = ((uint64_t)(((FPDOUBLE*)&value)->mantHi) << 32) | ((FPDOUBLE*)&value)->mantLo;
+    int realExponent = -1074;
+    if (((FPDOUBLE*)&value)->exp > 0)
     {
-        *sign = 1;
+        realMantissa += ((uint64_t)1 << 52);
+        realExponent = ((FPDOUBLE*)&value)->exp - 1075;
     }
 
+    char* digits = (char *)malloc(count + 1);
+
+    int firstDigitExponent = (int)ceill(log10F(value));
+
+    BigNum numerator;
+    BigNum denominator;
+    if (realExponent > 0)
     {
-        // we have issue #10290 tracking fixing the sign of 0.0 across the platforms
-        if (value == 0.0)
-        {
-            for (int j = 0; j < count; j++)
-            {
-                lpStartOfReturnBuffer[j] = '0';
-            }
-            lpStartOfReturnBuffer[count] = '\0';
-            goto done;
-        }
-
-        int tempBufferLength = snprintf(TempBuffer, 348, "%.40e", value);
-        
-        //
-        // Calculate the exponent value
-        //
-
-        int exponentIndex = strrchr(TempBuffer, 'e') - TempBuffer;
-        
-        int i = exponentIndex + 1;
-        int exponentSign = 1;
-        if (TempBuffer[i] == '-')
-        {
-            exponentSign = -1;
-            i++;
-        }
-        else if (TempBuffer[i] == '+')
-        {
-            i++;
-        }
-
-        int exponentValue = 0;
-        while (i < tempBufferLength)
-        {
-            _ASSERTE(TempBuffer[i] >= '0' && TempBuffer[i] <= '9');
-            exponentValue = exponentValue * 10 + ((unsigned char)TempBuffer[i] - (unsigned char) '0');
-            i++;
-        }
-        exponentValue *= exponentSign;
-
-        //
-        // Determine decimal location.
-        // 
-
-        if (exponentValue == 0)
-        {
-            *dec = 1;
-        }
-        else
-        {
-            *dec = exponentValue + 1;
-        }
-
-        //
-        // Copy the string from the temp buffer upto precision characters, removing the sign, and decimal as required.
-        // 
-
-        i = 0;
-        int mantissaIndex = 0;
-        while (i < count && mantissaIndex < exponentIndex)
-        {
-            if (TempBuffer[mantissaIndex] >= '0' && TempBuffer[mantissaIndex] <= '9')
-            {
-                lpStartOfReturnBuffer[i] = TempBuffer[mantissaIndex];
-                i++;
-            }
-            mantissaIndex++;
-        }
-
-        while (i < count)
-        {
-            lpStartOfReturnBuffer[i] = '0'; // append zeros as needed
-            i++;
-        }
-
-        lpStartOfReturnBuffer[i] = '\0';
-
-        //
-        // Round if needed
-        //
-
-        if (mantissaIndex >= exponentIndex || TempBuffer[mantissaIndex] < '5')
-        {
-            goto done;
-        }
-
-        i = count - 1;
-        while (lpStartOfReturnBuffer[i] == '9' && i > 0)
-        {
-            lpStartOfReturnBuffer[i] = '0';
-            i--;
-        }
-
-        if (i == 0 && lpStartOfReturnBuffer[i] == '9')
-        {
-            lpStartOfReturnBuffer[i] = '1';
-            (*dec)++;
-        }
-        else
-        {
-            lpStartOfReturnBuffer[i]++;
-        }
+        // value = (realMantissa * 2^realExponent) / (1)
+        shortShiftLeft(realMantissa, realExponent, &numerator);
+        denominator.len = 1;
+        denominator.blocks[0] = 1;
+    }
+    else
+    {
+        // value = (realMantissa * 2^realExponent) / (1)
+        //       = (realMantissa / 2^(-realExponent)
+        numerator.len = 1;
+        numerator.blocks[0] = realMantissa;
+        shortShiftLeft(1, -realExponent, &denominator);
     }
 
-done:
-
-    return lpStartOfReturnBuffer;
+    return digits;
 }
 
 void DoubleToNumber(double value, int precision, NUMBER* number)
@@ -183,6 +193,8 @@ void DoubleToNumber(double value, int precision, NUMBER* number)
 int main()
 {
     NUMBER number;
-    DoubleToNumber(7.9228162514264338e+28, 15, &number);
+    //DoubleToNumber(7.9228162514264338e+28, 15, &number);
+    DoubleToNumber(122.5, 15, &number);
+
     return 0;
 }
