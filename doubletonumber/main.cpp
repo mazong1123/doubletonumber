@@ -154,10 +154,59 @@ public:
 
     static void subtract(const BigNum& lhs, const BigNum& rhs, BigNum& result)
     {
+        // Assume lhs > rhs.
+        const uint32_t* pLhsCurrent = lhs.m_blocks;
+        const uint32_t* pLhsEnd = pLhsCurrent + lhs.m_len;
+
+        const uint32_t* pRhsCurrent = rhs.m_blocks;
+        const uint32_t* pRhsEnd = rhs.m_blocks;
+
+        uint32_t* pResultCurrent = result.m_blocks;
+        uint8_t len = 0;
+        int64_t carry = 0;
+
+        while (pLhsCurrent != pLhsEnd)
+        {
+            if (pRhsCurrent == pRhsEnd)
+            {
+                uint64_t sum = *pLhsCurrent + carry;
+            }
+        }
     }
 
     static void multiply(const BigNum& lhs, uint32_t value, BigNum& result)
     {
+        if (lhs.m_len == 0)
+        {
+            return;
+        }
+
+        // Zero out result internal blocks.
+        memset(result.m_blocks, 0, sizeof(uint32_t) * BIGSIZE);
+
+        const uint32_t* pCurrent = lhs.m_blocks;
+        const uint32_t* pEnd = pCurrent + lhs.m_len;
+        uint32_t* pResultCurrent = result.m_blocks;
+
+        uint64_t carry = 0;
+        while (pCurrent != pEnd)
+        {
+            uint64_t product = (uint64_t)(*pCurrent) * (uint64_t)value + carry;
+            carry = product >> 32;
+            *pResultCurrent = (uint32_t)(product & 0xFFFFFFFF);
+
+            ++pResultCurrent;
+            ++pCurrent;
+        }
+
+        if (lhs.m_len < BIGSIZE && result.m_blocks[lhs.m_len] != 0)
+        {
+            result.m_len = lhs.m_len + 1;
+        }
+        else
+        {
+            result.m_len = lhs.m_len;
+        }
     }
 
     static void multiply(const BigNum& lhs, const BigNum& rhs, BigNum& result)
