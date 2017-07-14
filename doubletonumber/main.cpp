@@ -63,9 +63,53 @@ public:
         return m_len;
     }
 
+    static int compare(const BigNum& lhs, uint32_t value)
+    {
+        if (lhs.m_len == 0)
+        {
+            return -1;
+        }
+
+        uint32_t lhsValue = lhs.m_blocks[0];
+
+        if (lhsValue > value)
+        {
+            return 1;
+        }
+
+        if (lhsValue < value)
+        {
+            return -1;
+        }
+
+        return 0;
+    }
+
     static int compare(const BigNum& lhs, const BigNum& rhs)
     {
-        // TODO:
+        int lenDiff = lhs.m_len - rhs.m_len;
+        if (lenDiff != 0)
+        {
+            return lenDiff;
+        }
+
+        for (uint8_t i = 0; i < lhs.m_len; ++i)
+        {
+            if (lhs.m_blocks[i] == rhs.m_blocks[i])
+            {
+                continue;
+            }
+
+            if (lhs.m_blocks[i] > rhs.m_blocks[i])
+            {
+                return 1;
+            }
+            else if (lhs.m_blocks[i] < rhs.m_blocks[i])
+            {
+                return -1;
+            }
+        }
+
         return 0;
     }
 
@@ -101,6 +145,19 @@ public:
         }
 
         result = *pCurrentTemp;
+    }
+
+    static uint32_t divdeRoundDown(const BigNum& lhs, const BigNum& rhs)
+    {
+        return 0;
+    }
+
+    static void subtract(const BigNum& lhs, const BigNum& rhs, BigNum& result)
+    {
+    }
+
+    static void multiply(const BigNum& lhs, uint32_t value, BigNum& result)
+    {
     }
 
     static void multiply(const BigNum& lhs, const BigNum& rhs, BigNum& result)
@@ -542,6 +599,27 @@ _ecvt2(double value, int count, int * dec, int * sign)
         // The exponent estimation was incorrect.
         firstDigitExponent += 1;
     }
+
+    int digitsNum = 0;
+    while (BigNum::compare(numerator, 0) > 0 && digitsNum < count)
+    {
+        uint32_t digit = BigNum::divdeRoundDown(scaledNumerator, scaledDenominator);
+        digits[digitsNum] = '0' + digit;
+        ++digitsNum;
+
+        BigNum tempNumerator;
+        BigNum multipliedDenominator;
+        BigNum::multiply(scaledDenominator, digit, multipliedDenominator);
+        BigNum::subtract(scaledNumerator, multipliedDenominator, tempNumerator);
+       
+        BigNum newNumerator;
+        BigNum::multiply(tempNumerator, (uint32_t)10, newNumerator);
+
+        numerator = newNumerator;
+    }
+
+    *dec = firstDigitExponent;
+    *sign = ((FPDOUBLE*)&value)->sign;
 
     return digits;
 }
