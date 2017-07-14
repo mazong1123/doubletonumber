@@ -63,6 +63,12 @@ public:
         return m_len;
     }
 
+    static int compare(const BigNum& lhs, const BigNum& rhs)
+    {
+        // TODO:
+        return 0;
+    }
+
     static void pow10(int exp, BigNum& result)
     {
         BigNum temp1;
@@ -413,6 +419,64 @@ double log10F(double v)
     return 0;
 }
 
+uint32_t logBase2(uint32_t val)
+{
+    static const uint8_t logTable[256] =
+    {
+        0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
+        4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7
+    };
+
+    uint32_t temp;
+
+    temp = val >> 24;
+    if (temp)
+    {
+        return 24 + logTable[temp];
+    }
+
+    temp = val >> 16;
+    if (temp)
+    {
+        return 16 + logTable[temp];
+    }
+
+    temp = val >> 8;
+    if (temp)
+    {
+        return 8 + logTable[temp];
+    }
+
+    return logTable[val];
+}
+
+uint32_t logBase2(uint64_t val)
+{
+    uint64_t temp;
+
+    temp = val >> 32;
+    if (temp)
+    {
+        return 32 + logBase2((uint32_t)temp);
+    }
+
+    return logBase2((uint32_t)val);
+}
+
 char * __cdecl
 _ecvt2(double value, int count, int * dec, int * sign)
 {
@@ -421,15 +485,22 @@ _ecvt2(double value, int count, int * dec, int * sign)
     //shortShiftLeft((uint64_t)100, 3, &test);
     uint64_t realMantissa = ((uint64_t)(((FPDOUBLE*)&value)->mantHi) << 32) | ((FPDOUBLE*)&value)->mantLo;
     int realExponent = -1074;
+    uint32_t mantissaHighBitIdx = 0;
     if (((FPDOUBLE*)&value)->exp > 0)
     {
         realMantissa += ((uint64_t)1 << 52);
         realExponent = ((FPDOUBLE*)&value)->exp - 1075;
+        mantissaHighBitIdx = 52;
+    }
+    else
+    {
+        mantissaHighBitIdx = logBase2(realMantissa);
     }
 
     char* digits = (char *)malloc(count + 1);
 
-    int firstDigitExponent = (int)ceill(log10F(value));
+    const double log10_2 = 0.30102999566398119521373889472449;
+    int firstDigitExponent = (int)(ceil(double((int)mantissaHighBitIdx + realExponent) * log10_2 - 0.69));
 
     BigNum numerator;
     BigNum denominator;
@@ -447,17 +518,29 @@ _ecvt2(double value, int count, int * dec, int * sign)
         uint64ShiftLeft(1, -realExponent, denominator);
     }
 
+    // TODO: Avoid copies!
+    BigNum scaledNumerator;
+    BigNum scaledDenominator;
+
     if (firstDigitExponent > 0)
     {
         BigNum poweredValue;
         BigNum::pow10(firstDigitExponent, poweredValue);
-        BigNum::multiply(denominator, poweredValue, denominator);
+        BigNum::multiply(denominator, poweredValue, scaledDenominator);
+        scaledNumerator = numerator;
     }
     else if (firstDigitExponent < 0)
     {
         BigNum poweredValue;
-        BigNum::pow10(firstDigitExponent, poweredValue);
-        BigNum::multiply(numerator, poweredValue, numerator);
+        BigNum::pow10(-firstDigitExponent, poweredValue);
+        BigNum::multiply(numerator, poweredValue, scaledNumerator);
+        scaledDenominator = denominator;
+    }
+
+    if (BigNum::compare(scaledNumerator, scaledDenominator) >= 0)
+    {
+        // The exponent estimation was incorrect.
+        firstDigitExponent += 1;
     }
 
     return digits;
