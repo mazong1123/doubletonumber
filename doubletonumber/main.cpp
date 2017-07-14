@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
+#include <algorithm>
 #include <iostream>
 
 using namespace std;
@@ -33,12 +34,6 @@ public:
         setUInt64(value);
     }
 
-    BigNum(uint8_t len, uint32_t* blocks)
-        :m_len(len)
-    {
-        memcpy(m_blocks, blocks, len);
-    }
-
     ~BigNum()
     {
     }
@@ -68,10 +63,38 @@ public:
         return m_len;
     }
 
-    static void pow10(const int value, BigNum& result)
+    static void pow10(int exp, BigNum& result)
     {
-        BigNum d = m_power10BigNumTable[0];
-        uint32_t t = m_power10UInt32Table[0];
+        BigNum temp1;
+        BigNum temp2;
+
+        BigNum* pCurrentTemp = &temp1;
+        BigNum* pNextTemp = &temp2;
+
+        uint32_t smallExp = exp & 0x7;
+        pCurrentTemp->setUInt32(m_power10UInt32Table[smallExp]);
+
+        exp >>= 3;
+        uint32_t idx = 0;
+
+        while (exp != 0)
+        {
+            // if the current bit is set, multiply it with the corresponding power of 10
+            if (exp & 1)
+            {
+                // multiply into the next temporary
+                multiply(*pCurrentTemp, m_power10BigNumTable[idx], *pNextTemp);
+
+                // swap to the next temporary
+                swap(pNextTemp, pCurrentTemp);
+            }
+
+            // advance to the next bit
+            ++idx;
+            exp >>= 1;
+        }
+
+        result = *pCurrentTemp;
     }
 
     static void multiply(const BigNum& lhs, const BigNum& rhs, BigNum& result)
@@ -173,8 +196,8 @@ private:
     static class StaticInitializer
     {
     public:
-        StaticInitializer() 
-        { 
+        StaticInitializer()
+        {
             // 10^8
             m_power10BigNumTable[0].m_len = (uint8_t)1;
             m_power10BigNumTable[0].m_blocks[0] = (uint32_t)100000000;
@@ -254,7 +277,7 @@ private:
     uint32_t m_blocks[BIGSIZE];
 };
 
-uint32_t BigNum::m_power10UInt32Table[UINT32POWER10NUM] = 
+uint32_t BigNum::m_power10UInt32Table[UINT32POWER10NUM] =
 {
     1,          // 10^0
     10,         // 10^1
@@ -268,42 +291,6 @@ uint32_t BigNum::m_power10UInt32Table[UINT32POWER10NUM] =
 
 BigNum BigNum::m_power10BigNumTable[BIGPOWER10NUM];
 BigNum::StaticInitializer BigNum::m_initializer;
-
-const BigNum m_power10BigNumTable[20] =
-{
-    // 10^0
-    //{ 1, {10} }
-    /*// 10^1
-    {1, { 10 } },
-    // 10^2
-    {1, { 100 } },
-    // 10^3
-    {1, { 1000 } },
-    // 10^4
-    {1, { 10000 } },
-    // 10^5
-    {1, { 100000 } },
-    // 10^6
-    {1, { 1000000 } },
-    // 10^7
-    {1, { 10000000 } },
-    // 10^8
-    { 1,{ 100000000 } },
-    // 10^16
-    { 2,{ 0x6fc10000, 0x002386f2 } },
-    // 10^32
-    { 4,{ 0x00000000, 0x85acef81, 0x2d6d415b, 0x000004ee, } },
-    // 10^64
-    { 7,{ 0x00000000, 0x00000000, 0xbf6a1f01, 0x6e38ed64, 0xdaa797ed, 0xe93ff9f4, 0x00184f03, } },
-    // 10^128
-    { 14,{ 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x2e953e01, 0x03df9909, 0x0f1538fd,
-    0x2374e42f, 0xd3cff5ec, 0xc404dc08, 0xbccdb0da, 0xa6337f19, 0xe91f2603, 0x0000024e, } },
-    // 10^256
-    { 27,{ 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-    0x00000000, 0x982e7c01, 0xbed3875b, 0xd8d99f72, 0x12152f87, 0x6bde50c6, 0xcf4a6e70,
-    0xd595d80f, 0x26b2716e, 0xadc666b0, 0x1d153624, 0x3c42d35a, 0x63ff540e, 0xcc5573c0,
-    0x65f9ef17, 0x55bc28f2, 0x80dcc7f7, 0xf46eeddc, 0x5fdcefce, 0x000553f7, } }*/
-};
 
 struct NUMBER
 {
