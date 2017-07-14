@@ -23,8 +23,44 @@ public:
     {
     }
 
+    BigNum(uint32_t value)
+    {
+        setUInt32(value);
+    }
+
+    BigNum(uint64_t value)
+    {
+        setUInt64(value);
+    }
+
+    BigNum(uint8_t len, uint32_t* blocks)
+        :m_len(len)
+    {
+        memcpy(m_blocks, blocks, len);
+    }
+
     ~BigNum()
     {
+    }
+
+    BigNum & operator=(const BigNum &rhs)
+    {
+        uint8_t length = rhs.m_len;
+        uint32_t* pCurrent = m_blocks;
+        const uint32_t* pRhsCurrent = rhs.m_blocks;
+        const uint32_t* pRhsEnd = pRhsCurrent + length;
+
+        while (pRhsCurrent != pRhsEnd)
+        {
+            *pCurrent = *pRhsCurrent;
+
+            ++pCurrent;
+            ++pRhsCurrent;
+        }
+
+        m_len = length;
+
+        return *this;
     }
 
     uint8_t length() const
@@ -34,6 +70,8 @@ public:
 
     static void pow10(const int value, BigNum& result)
     {
+        BigNum d = m_power10BigNumTable[0];
+        uint32_t t = m_power10UInt32Table[0];
     }
 
     static void multiply(const BigNum& lhs, const BigNum& rhs, BigNum& result)
@@ -127,8 +165,144 @@ public:
 
 private:
     static const uint8_t BIGSIZE = 24;
+    static const uint8_t UINT32POWER10NUM = 8;
+    static const uint8_t BIGPOWER10NUM = 6;
+    static uint32_t m_power10UInt32Table[UINT32POWER10NUM];
+    static BigNum m_power10BigNumTable[BIGPOWER10NUM];
+
+    static class StaticInitializer
+    {
+    public:
+        StaticInitializer() 
+        { 
+            // 10^8
+            m_power10BigNumTable[0].m_len = (uint8_t)1;
+            m_power10BigNumTable[0].m_blocks[0] = (uint32_t)100000000;
+
+            // 10^16
+            m_power10BigNumTable[1].m_len = (uint8_t)2;
+            m_power10BigNumTable[1].m_blocks[0] = (uint32_t)0x6fc10000;
+            m_power10BigNumTable[1].m_blocks[1] = (uint32_t)0x002386f2;
+
+            // 10^32
+            m_power10BigNumTable[2].m_len = (uint8_t)4;
+            m_power10BigNumTable[2].m_blocks[0] = (uint32_t)0x00000000;
+            m_power10BigNumTable[2].m_blocks[1] = (uint32_t)0x85acef81;
+            m_power10BigNumTable[2].m_blocks[2] = (uint32_t)0x2d6d415b;
+            m_power10BigNumTable[2].m_blocks[3] = (uint32_t)0x000004ee;
+
+            // 10^64
+            m_power10BigNumTable[3].m_len = (uint8_t)7;
+            m_power10BigNumTable[3].m_blocks[0] = (uint32_t)0x00000000;
+            m_power10BigNumTable[3].m_blocks[1] = (uint32_t)0x00000000;
+            m_power10BigNumTable[3].m_blocks[2] = (uint32_t)0xbf6a1f01;
+            m_power10BigNumTable[3].m_blocks[3] = (uint32_t)0x6e38ed64;
+            m_power10BigNumTable[3].m_blocks[4] = (uint32_t)0xdaa797ed;
+            m_power10BigNumTable[3].m_blocks[5] = (uint32_t)0xe93ff9f4;
+            m_power10BigNumTable[3].m_blocks[6] = (uint32_t)0x00184f03;
+
+            // 10^128
+            m_power10BigNumTable[4].m_len = (uint8_t)14;
+            m_power10BigNumTable[4].m_blocks[0] = (uint32_t)0x00000000;
+            m_power10BigNumTable[4].m_blocks[1] = (uint32_t)0x00000000;
+            m_power10BigNumTable[4].m_blocks[2] = (uint32_t)0x00000000;
+            m_power10BigNumTable[4].m_blocks[3] = (uint32_t)0x00000000;
+            m_power10BigNumTable[4].m_blocks[4] = (uint32_t)0x2e953e01;
+            m_power10BigNumTable[4].m_blocks[5] = (uint32_t)0x03df9909;
+            m_power10BigNumTable[4].m_blocks[6] = (uint32_t)0x0f1538fd;
+            m_power10BigNumTable[4].m_blocks[7] = (uint32_t)0x2374e42f;
+            m_power10BigNumTable[4].m_blocks[8] = (uint32_t)0xd3cff5ec;
+            m_power10BigNumTable[4].m_blocks[9] = (uint32_t)0xc404dc08;
+            m_power10BigNumTable[4].m_blocks[10] = (uint32_t)0xbccdb0da;
+            m_power10BigNumTable[4].m_blocks[11] = (uint32_t)0xa6337f19;
+            m_power10BigNumTable[4].m_blocks[12] = (uint32_t)0xe91f2603;
+            m_power10BigNumTable[4].m_blocks[13] = (uint32_t)0x0000024e;
+
+            // 10^256
+            m_power10BigNumTable[5].m_len = (uint8_t)27;
+            m_power10BigNumTable[5].m_blocks[0] = (uint32_t)0x00000000;
+            m_power10BigNumTable[5].m_blocks[1] = (uint32_t)0x00000000;
+            m_power10BigNumTable[5].m_blocks[2] = (uint32_t)0x00000000;
+            m_power10BigNumTable[5].m_blocks[3] = (uint32_t)0x00000000;
+            m_power10BigNumTable[5].m_blocks[4] = (uint32_t)0x00000000;
+            m_power10BigNumTable[5].m_blocks[5] = (uint32_t)0x00000000;
+            m_power10BigNumTable[5].m_blocks[6] = (uint32_t)0x00000000;
+            m_power10BigNumTable[5].m_blocks[7] = (uint32_t)0x00000000;
+            m_power10BigNumTable[5].m_blocks[8] = (uint32_t)0x982e7c01;
+            m_power10BigNumTable[5].m_blocks[9] = (uint32_t)0xbed3875b;
+            m_power10BigNumTable[5].m_blocks[10] = (uint32_t)0xd8d99f72;
+            m_power10BigNumTable[5].m_blocks[11] = (uint32_t)0x12152f87;
+            m_power10BigNumTable[5].m_blocks[12] = (uint32_t)0x6bde50c6;
+            m_power10BigNumTable[5].m_blocks[13] = (uint32_t)0xcf4a6e70;
+            m_power10BigNumTable[5].m_blocks[14] = (uint32_t)0xd595d80f;
+            m_power10BigNumTable[5].m_blocks[15] = (uint32_t)0x26b2716e;
+            m_power10BigNumTable[5].m_blocks[16] = (uint32_t)0xadc666b0;
+            m_power10BigNumTable[5].m_blocks[17] = (uint32_t)0x1d153624;
+            m_power10BigNumTable[5].m_blocks[18] = (uint32_t)0x3c42d35a;
+            m_power10BigNumTable[5].m_blocks[19] = (uint32_t)0x63ff540e;
+            m_power10BigNumTable[5].m_blocks[20] = (uint32_t)0xcc5573c0;
+            m_power10BigNumTable[5].m_blocks[21] = (uint32_t)0x65f9ef17;
+            m_power10BigNumTable[5].m_blocks[22] = (uint32_t)0x55bc28f2;
+            m_power10BigNumTable[5].m_blocks[23] = (uint32_t)0x80dcc7f7;
+            m_power10BigNumTable[5].m_blocks[24] = (uint32_t)0xf46eeddc;
+            m_power10BigNumTable[5].m_blocks[25] = (uint32_t)0x5fdcefce;
+            m_power10BigNumTable[5].m_blocks[26] = (uint32_t)0x000553f7;
+        }
+    } m_initializer;
+
     uint8_t m_len;
     uint32_t m_blocks[BIGSIZE];
+};
+
+uint32_t BigNum::m_power10UInt32Table[UINT32POWER10NUM] = 
+{
+    1,          // 10^0
+    10,         // 10^1
+    100,        // 10^2
+    1000,       // 10^3
+    10000,      // 10^4
+    100000,     // 10^5
+    1000000,    // 10^6
+    10000000,   // 10^7
+};
+
+BigNum BigNum::m_power10BigNumTable[BIGPOWER10NUM];
+BigNum::StaticInitializer BigNum::m_initializer;
+
+const BigNum m_power10BigNumTable[20] =
+{
+    // 10^0
+    //{ 1, {10} }
+    /*// 10^1
+    {1, { 10 } },
+    // 10^2
+    {1, { 100 } },
+    // 10^3
+    {1, { 1000 } },
+    // 10^4
+    {1, { 10000 } },
+    // 10^5
+    {1, { 100000 } },
+    // 10^6
+    {1, { 1000000 } },
+    // 10^7
+    {1, { 10000000 } },
+    // 10^8
+    { 1,{ 100000000 } },
+    // 10^16
+    { 2,{ 0x6fc10000, 0x002386f2 } },
+    // 10^32
+    { 4,{ 0x00000000, 0x85acef81, 0x2d6d415b, 0x000004ee, } },
+    // 10^64
+    { 7,{ 0x00000000, 0x00000000, 0xbf6a1f01, 0x6e38ed64, 0xdaa797ed, 0xe93ff9f4, 0x00184f03, } },
+    // 10^128
+    { 14,{ 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x2e953e01, 0x03df9909, 0x0f1538fd,
+    0x2374e42f, 0xd3cff5ec, 0xc404dc08, 0xbccdb0da, 0xa6337f19, 0xe91f2603, 0x0000024e, } },
+    // 10^256
+    { 27,{ 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x982e7c01, 0xbed3875b, 0xd8d99f72, 0x12152f87, 0x6bde50c6, 0xcf4a6e70,
+    0xd595d80f, 0x26b2716e, 0xadc666b0, 0x1d153624, 0x3c42d35a, 0x63ff540e, 0xcc5573c0,
+    0x65f9ef17, 0x55bc28f2, 0x80dcc7f7, 0xf46eeddc, 0x5fdcefce, 0x000553f7, } }*/
 };
 
 struct NUMBER
@@ -161,7 +335,7 @@ void uint64ShiftLeft(uint64_t input, int shift, BigNum& output)
     /*BigNum rr;
     BigNum b1;
     b1.setUInt64(4294967295);
-    
+
     BigNum b2;
     b2.setUInt32(100);
 
@@ -325,6 +499,9 @@ void DoubleToNumber(double value, int precision, NUMBER* number)
 
 int main()
 {
+    BigNum r;
+    BigNum::pow10(2, r);
+    //BigNum d = m_power10BigNumTable[0];
     NUMBER number;
     //DoubleToNumber(7.9228162514264338e+28, 15, &number);
     DoubleToNumber(122.5, 15, &number);
