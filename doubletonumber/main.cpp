@@ -3,6 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include <iostream>
+#include <cassert>
 
 using namespace std;
 
@@ -154,24 +155,68 @@ public:
 
     static void subtract(const BigNum& lhs, const BigNum& rhs, BigNum& result)
     {
-        // Assume lhs > rhs.
+        assert(lhs.m_len >= rhs.m_len);
+        // TODO: assert lhs >= rhs.
+
         const uint32_t* pLhsCurrent = lhs.m_blocks;
         const uint32_t* pLhsEnd = pLhsCurrent + lhs.m_len;
 
         const uint32_t* pRhsCurrent = rhs.m_blocks;
-        const uint32_t* pRhsEnd = rhs.m_blocks;
+        const uint32_t* pRhsEnd = rhs.m_blocks + rhs.m_len;
 
         uint32_t* pResultCurrent = result.m_blocks;
         uint8_t len = 0;
-        int64_t carry = 0;
+        bool isBorrow = false;
 
-        while (pLhsCurrent != pLhsEnd)
+        while (pRhsCurrent != pRhsEnd)
         {
-            if (pRhsCurrent == pRhsEnd)
+            if (isBorrow)
             {
-                uint64_t sum = *pLhsCurrent + carry;
+                // TODO: may have a bug if *pLhsCurrent - 1 < *pRhsCurrent.
+                // We should add the borrowed value.
+
+                *pResultCurrent = *pLhsCurrent - *pRhsCurrent - 1;
+                isBorrow = *pRhsCurrent >= *pLhsCurrent;
             }
+            else
+            {
+                // TODO: may have a bug if *pLhsCurrent < *pRhsCurrent.
+                // We should add the borrowed value.
+
+                *pResultCurrent = *pLhsCurrent - *pRhsCurrent;
+                isBorrow = *pRhsCurrent > *pLhsCurrent;
+            }
+
+            ++pResultCurrent;
+            ++pRhsCurrent;
+            ++pLhsCurrent;
         }
+
+        uint8_t lenDiff = lhs.m_len - rhs.m_len;
+
+        uint8_t start = lenDiff;
+        for (uint8_t start = lenDiff; isBorrow && start > 0; --start)
+        {
+            uint32_t sub = *pLhsCurrent++;
+            *pResultCurrent++ = sub - 1;
+            isBorrow = (sub == 0);
+        }
+
+        while (start > 0)
+        {
+            *pResultCurrent++ = *pLhsCurrent++;
+            --start;
+        }
+
+        len = lhs.m_len;
+
+        while (len > 0 && *pResultCurrent == 0)
+        {
+            --len;
+            --pResultCurrent;
+        }
+
+        result.m_len = len;
     }
 
     static void multiply(const BigNum& lhs, uint32_t value, BigNum& result)
@@ -660,7 +705,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
         BigNum multipliedDenominator;
         BigNum::multiply(scaledDenominator, digit, multipliedDenominator);
         BigNum::subtract(scaledNumerator, multipliedDenominator, tempNumerator);
-       
+
         BigNum newNumerator;
         BigNum::multiply(tempNumerator, (uint32_t)10, newNumerator);
 
@@ -697,7 +742,14 @@ void DoubleToNumber(double value, int precision, NUMBER* number)
 int main()
 {
     BigNum r;
-    BigNum::pow10(2, r);
+    r.setUInt64(1111111111111111111);
+
+    BigNum r2;
+    r2.setUInt32(100);
+
+    BigNum rr;
+    BigNum::subtract(r, r2, rr);
+
     //BigNum d = m_power10BigNumTable[0];
     NUMBER number;
     //DoubleToNumber(7.9228162514264338e+28, 15, &number);

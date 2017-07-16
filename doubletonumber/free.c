@@ -570,6 +570,27 @@ void free_init()
 
 int main()
 {
+    Bigit a = 1;
+    Bigit b = 3;
+    Bigit c = a - b;
+
+    Bignum x;
+    x.l = 1;
+    memset(x.d, 0, 24 * sizeof(Bigit));
+    x.d[0] = 0;
+    x.d[1] = 100;
+
+    Bignum y;
+    y.l = 1;
+    memset(y.d, 0, 24 * sizeof(Bigit));
+    y.d[0] = 100;
+    y.d[1] = 98;
+
+    Bignum z;
+    z.l = 0;
+    memset(z.d, 0, 24 * sizeof(Bigit));
+    sub_big(&x, &y, &z);
+
     //double v = 7.9228162514264338e+28;
     double v = 7123456778123456789;
     //(*((long long*)&v)) = ~(1LL << 52);
