@@ -3,6 +3,15 @@
 
 class DoubleToNumberTestFixture : public::testing::Test
 {
+public:
+    void assertResult(const NUMBER& expected, const std::wstring& expectedDigits, const NUMBER& actual)
+    {
+        EXPECT_EQ(expected.precision, actual.precision);
+        EXPECT_EQ(expected.scale, actual.scale);
+        EXPECT_EQ(expected.sign, actual.sign);
+        EXPECT_EQ(expectedDigits, std::wstring(actual.digits));
+    }
+
 protected:
     virtual void SetUp()
     {
@@ -16,79 +25,99 @@ protected:
 TEST_F(DoubleToNumberTestFixture, DoubleMinValueRoundTripTest)
 {
     // Prepare
-    int expectedPrecision = 17;
-    int expectedScale = 308;
-    int expectedSign = 1;
-
-    std::wstring expectedDigits = L"17976931348623157";
+    NUMBER expected;
+    expected.precision = 17;
+    expected.scale = 308;
+    expected.sign = 1;
 
     // Act
     NUMBER actual;
     DoubleToNumber(-1.7976931348623157E+308, 17, &actual);
 
     // Assert
-    EXPECT_EQ(expectedPrecision, actual.precision);
-    EXPECT_EQ(expectedScale, actual.scale);
-    EXPECT_EQ(expectedSign, actual.sign);
-    EXPECT_EQ(expectedDigits, std::wstring(actual.digits));
+    DoubleToNumberTestFixture::assertResult(expected, L"17976931348623157", actual);
+}
+
+TEST_F(DoubleToNumberTestFixture, DoubleMaxValueRoundTripTest)
+{
+    // Prepare
+    NUMBER expected;
+    expected.precision = 17;
+    expected.scale = 308;
+    expected.sign = 0;
+
+    // Act
+    NUMBER actual;
+    DoubleToNumber(1.7976931348623157e+308, 17, &actual);
+
+    // Assert
+    DoubleToNumberTestFixture::assertResult(expected, L"17976931348623157", actual);
 }
 
 TEST_F(DoubleToNumberTestFixture, BigNumberRoundTripTest)
 {
     // Prepare
-    int expectedPrecision = 17;
-    int expectedScale = 28;
-    int expectedSign = 0;
-
-    std::wstring expectedDigits = L"79228162514264338";
+    NUMBER expected;
+    expected.precision = 17;
+    expected.scale = 28;
+    expected.sign = 0;
 
     // Act
     NUMBER actual;
     DoubleToNumber(7.9228162514264338E+28, 17, &actual);
 
     // Assert
-    EXPECT_EQ(expectedPrecision, actual.precision);
-    EXPECT_EQ(expectedScale, actual.scale);
-    EXPECT_EQ(expectedSign, actual.sign);
-    EXPECT_EQ(expectedDigits, std::wstring(actual.digits));
+    DoubleToNumberTestFixture::assertResult(expected, L"79228162514264338", actual);
 }
 
 TEST_F(DoubleToNumberTestFixture, SmallNumberGreaterThanOneRoundTripTest)
 {
     // Prepare
-    int expectedPrecision = 17;
-    int expectedScale = 1;
-    int expectedSign = 0;
-
-    std::wstring expectedDigits = L"7092281625142644";
+    NUMBER expected;
+    expected.precision = 17;
+    expected.scale = 1;
+    expected.sign = 0;
 
     // Act
     NUMBER actual;
     DoubleToNumber(70.9228162514264339123, 17, &actual);
 
     // Assert
-    EXPECT_EQ(expectedPrecision, actual.precision);
-    EXPECT_EQ(expectedScale, actual.scale);
-    EXPECT_EQ(expectedSign, actual.sign);
-    EXPECT_EQ(expectedDigits, std::wstring(actual.digits));
+    DoubleToNumberTestFixture::assertResult(expected, L"7092281625142644", actual);
 }
 
 TEST_F(DoubleToNumberTestFixture, SmallNumberGreaterThanOneNormalTest)
 {
     // Prepare
-    int expectedPrecision = 15;
-    int expectedScale = 1;
-    int expectedSign = 0;
-
-    std::wstring expectedDigits = L"709228162514264";
+    NUMBER expected;
+    expected.precision = 15;
+    expected.scale = 1;
+    expected.sign = 0;
 
     // Act
     NUMBER actual;
     DoubleToNumber(70.9228162514264339123, 15, &actual);
 
     // Assert
-    EXPECT_EQ(expectedPrecision, actual.precision);
-    EXPECT_EQ(expectedScale, actual.scale);
-    EXPECT_EQ(expectedSign, actual.sign);
-    EXPECT_EQ(expectedDigits, std::wstring(actual.digits));
+    DoubleToNumberTestFixture::assertResult(expected, L"709228162514264", actual);
+}
+
+TEST_F(DoubleToNumberTestFixture, RoundingTest)
+{
+    // Prepare
+    NUMBER expected;
+    expected.precision = 17;
+    expected.scale = 0;
+    expected.sign = 0;
+
+    // Act
+    NUMBER actual;
+    DoubleToNumber(3.1415926535897937784612345, 17, &actual);
+
+    NUMBER actual2;
+    DoubleToNumber(3.1415926535897937884612345, 17, &actual2);
+
+    // Assert
+    DoubleToNumberTestFixture::assertResult(expected, L"31415926535897936", actual);
+    DoubleToNumberTestFixture::assertResult(expected, L"31415926535897940", actual2);
 }
