@@ -64,6 +64,11 @@ public:
         return m_len;
     }
 
+    uint32_t getBlock(uint8_t index)
+    {
+        return m_blocks[index];
+    }
+
     static int compare(const BigNum& lhs, uint32_t value)
     {
         if (lhs.m_len == 0)
@@ -73,7 +78,7 @@ public:
 
         uint32_t lhsValue = lhs.m_blocks[0];
 
-        if (lhsValue > value)
+        if (lhsValue > value || lhs.m_len > 1)
         {
             return 1;
         }
@@ -94,7 +99,7 @@ public:
             return lenDiff;
         }
 
-        for (uint8_t i = 0; i < lhs.m_len; ++i)
+        for (int i = lhs.m_len - 1; i >= 0; --i)
         {
             if (lhs.m_blocks[i] == rhs.m_blocks[i])
             {
@@ -112,6 +117,72 @@ public:
         }
 
         return 0;
+    }
+
+    static void bigIntShiftLeft(BigNum* pResult, uint32_t shift)
+    {
+        uint32_t shiftBlocks = shift / 32;
+        uint32_t shiftBits = shift % 32;
+
+        // process blocks high to low so that we can safely process in place
+        const uint32_t* pInBlocks = pResult->m_blocks;
+        int inLength = pResult->m_len;
+
+        // check if the shift is block aligned
+        if (shiftBits == 0)
+        {
+            // copy blcoks from high to low
+            for (uint32_t * pInCur = pResult->m_blocks + inLength, *pOutCur = pInCur + shiftBlocks;
+                pInCur >= pInBlocks;
+                --pInCur, --pOutCur)
+            {
+                *pOutCur = *pInCur;
+            }
+
+            // zero the remaining low blocks
+            for (uint32_t i = 0; i < shiftBlocks; ++i)
+                pResult->m_blocks[i] = 0;
+
+            pResult->m_len += shiftBlocks;
+        }
+        // else we need to shift partial blocks
+        else
+        {
+            int inBlockIdx = inLength - 1;
+            uint32_t outBlockIdx = inLength + shiftBlocks;
+
+            // set the length to hold the shifted blocks
+            pResult->m_len = outBlockIdx + 1;
+
+            // output the initial blocks
+            const uint32_t lowBitsShift = (32 - shiftBits);
+            uint32_t highBits = 0;
+            uint32_t block = pResult->m_blocks[inBlockIdx];
+            uint32_t lowBits = block >> lowBitsShift;
+            while (inBlockIdx > 0)
+            {
+                pResult->m_blocks[outBlockIdx] = highBits | lowBits;
+                highBits = block << shiftBits;
+
+                --inBlockIdx;
+                --outBlockIdx;
+
+                block = pResult->m_blocks[inBlockIdx];
+                lowBits = block >> lowBitsShift;
+            }
+
+            // output the final blocks
+            pResult->m_blocks[outBlockIdx] = highBits | lowBits;
+            pResult->m_blocks[outBlockIdx - 1] = block << shiftBits;
+
+            // zero the remaining low blocks
+            for (uint32_t i = 0; i < shiftBlocks; ++i)
+                pResult->m_blocks[i] = 0;
+
+            // check if the terminating block has no set bits
+            if (pResult->m_blocks[pResult->m_len - 1] == 0)
+                --pResult->m_len;
+        }
     }
 
     static void pow10(int exp, BigNum& result)
@@ -148,9 +219,82 @@ public:
         result = *pCurrentTemp;
     }
 
-    static uint32_t divdeRoundDown(const BigNum& lhs, const BigNum& rhs)
+    static uint32_t divdeRoundDown(BigNum* pDividend, const BigNum& divisor)
     {
-        return 0;
+        uint32_t len = divisor.m_len;
+        if (pDividend->m_len < len)
+        {
+            return 0;
+        }
+
+        const uint32_t* pFinalDivisorBlock = divisor.m_blocks + len - 1;
+        uint32_t* pFinalDividendBlock = pDividend->m_blocks + len - 1;
+
+        uint32_t quotient = *pFinalDividendBlock / *pFinalDivisorBlock;
+        // Divide out the estimated quotient
+        if (quotient != 0)
+        {
+            // dividend = dividend - divisor*quotient
+            const uint32_t *pDivisorCur = divisor.m_blocks;
+            uint32_t *pDividendCur = pDividend->m_blocks;
+
+            uint64_t borrow = 0;
+            uint64_t carry = 0;
+            do
+            {
+                uint64_t product = (uint64_t)*pDivisorCur * (uint64_t)quotient + carry;
+                carry = product >> 32;
+
+                uint64_t difference = (uint64_t)*pDividendCur - (product & 0xFFFFFFFF) - borrow;
+                borrow = (difference >> 32) & 1;
+
+                *pDividendCur = difference & 0xFFFFFFFF;
+
+                ++pDivisorCur;
+                ++pDividendCur;
+            } while (pDivisorCur <= pFinalDivisorBlock);
+
+            // remove all leading zero blocks from dividend
+            while (len > 0 && pDividend->m_blocks[len - 1] == 0)
+            {
+                --len;
+            }
+
+            pDividend->m_len = len;
+        }
+
+        // If the dividend is still larger than the divisor, we overshot our estimate quotient. To correct,
+        // we increment the quotient and subtract one more divisor from the dividend.
+        if (BigNum::compare(*pDividend, divisor) >= 0)
+        {
+            ++quotient;
+
+            // dividend = dividend - divisor
+            const uint32_t *pDivisorCur = divisor.m_blocks;
+            uint32_t *pDividendCur = pDividend->m_blocks;
+
+            uint64_t borrow = 0;
+            do
+            {
+                uint64_t difference = (uint64_t)*pDividendCur - (uint64_t)*pDivisorCur - borrow;
+                borrow = (difference >> 32) & 1;
+
+                *pDividendCur = difference & 0xFFFFFFFF;
+
+                ++pDivisorCur;
+                ++pDividendCur;
+            } while (pDivisorCur <= pFinalDivisorBlock);
+
+            // remove all leading zero blocks from dividend
+            while (len > 0 && pDividend->m_blocks[len - 1] == 0)
+            {
+                --len;
+            }
+
+            pDividend->m_len = len;
+        }
+
+        return quotient;
     }
 
     static void subtract(const BigNum& lhs, const BigNum& rhs, BigNum& result)
@@ -165,6 +309,7 @@ public:
         const uint32_t* pRhsEnd = rhs.m_blocks + rhs.m_len;
 
         uint32_t* pResultCurrent = result.m_blocks;
+
         uint8_t len = 0;
         bool isBorrow = false;
 
@@ -210,7 +355,7 @@ public:
 
         len = lhs.m_len;
 
-        while (len > 0 && *pResultCurrent == 0)
+        while (len > 0 && *--pResultCurrent == 0)
         {
             --len;
             --pResultCurrent;
@@ -649,6 +794,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
     }
 
     char* digits = (char *)malloc(count + 1);
+    memset(digits, 0, count + 1);
 
     const double log10_2 = 0.30102999566398119521373889472449;
     int firstDigitExponent = (int)(ceil(double((int)mantissaHighBitIdx + realExponent) * log10_2 - 0.69));
@@ -657,35 +803,35 @@ _ecvt2(double value, int count, int * dec, int * sign)
     BigNum denominator;
     if (realExponent > 0)
     {
+        numerator.setUInt64(4 * realMantissa);
+        BigNum::bigIntShiftLeft(&numerator, realExponent);
         // value = (realMantissa * 2^realExponent) / (1)
-        uint64ShiftLeft(realMantissa, realExponent, numerator);
-        denominator.setUInt64(1);
+        //uint64ShiftLeft(4 * realMantissa, realExponent, numerator);
+        denominator.setUInt64(4);
     }
     else
     {
         // value = (realMantissa * 2^realExponent) / (1)
         //       = (realMantissa / 2^(-realExponent)
-        numerator.setUInt64(realMantissa);
-        uint64ShiftLeft(1, -realExponent, denominator);
+        numerator.setUInt64(2 * realMantissa);
+        uint64ShiftLeft(1, -realExponent + 1, denominator);
     }
 
     // TODO: Avoid copies!
-    BigNum scaledNumerator;
-    BigNum scaledDenominator;
+    BigNum scaledNumerator = numerator;
+    BigNum scaledDenominator = denominator;
 
     if (firstDigitExponent > 0)
     {
         BigNum poweredValue;
         BigNum::pow10(firstDigitExponent, poweredValue);
         BigNum::multiply(denominator, poweredValue, scaledDenominator);
-        scaledNumerator = numerator;
     }
     else if (firstDigitExponent < 0)
     {
         BigNum poweredValue;
         BigNum::pow10(-firstDigitExponent, poweredValue);
         BigNum::multiply(numerator, poweredValue, scaledNumerator);
-        scaledDenominator = denominator;
     }
 
     if (BigNum::compare(scaledNumerator, scaledDenominator) >= 0)
@@ -693,26 +839,132 @@ _ecvt2(double value, int count, int * dec, int * sign)
         // The exponent estimation was incorrect.
         firstDigitExponent += 1;
     }
-
-    int digitsNum = 0;
-    while (BigNum::compare(numerator, 0) > 0 && digitsNum < count)
+    else
     {
-        uint32_t digit = BigNum::divdeRoundDown(scaledNumerator, scaledDenominator);
-        digits[digitsNum] = '0' + digit;
-        ++digitsNum;
-
-        BigNum tempNumerator;
-        BigNum multipliedDenominator;
-        BigNum::multiply(scaledDenominator, digit, multipliedDenominator);
-        BigNum::subtract(scaledNumerator, multipliedDenominator, tempNumerator);
-
-        BigNum newNumerator;
-        BigNum::multiply(tempNumerator, (uint32_t)10, newNumerator);
-
-        numerator = newNumerator;
+        BigNum temp;
+        BigNum::multiply(scaledNumerator, 10, temp);
+        scaledNumerator = temp;
     }
 
-    *dec = firstDigitExponent;
+    *dec = firstDigitExponent - 1;
+
+    uint32_t hiBlock = scaledDenominator.getBlock(scaledDenominator.length() - 1);
+    if (hiBlock < 8 || hiBlock > 429496729)
+    {
+        // Perform a bit shift on all values to get the highest block of the denominator into
+        // the range [8,429496729]. We are more likely to make accurate quotient estimations
+        // in BigInt_DivideWithRemainder_MaxQuotient9() with higher denominator values so
+        // we shift the denominator to place the highest bit at index 27 of the highest block.
+        // This is safe because (2^28 - 1) = 268435455 which is less than 429496729. This means
+        // that all values with a highest bit at index 27 are within range.         
+        uint32_t hiBlockLog2 = logBase2(hiBlock);
+        uint32_t shift = (32 + 27 - hiBlockLog2) % 32;
+
+        BigNum::bigIntShiftLeft(&scaledDenominator, shift);
+        BigNum::bigIntShiftLeft(&scaledNumerator, shift);
+        /*BigInt_ShiftLeft(&scale, shift);
+        BigInt_ShiftLeft(&scaledValue, shift);
+        BigInt_ShiftLeft(&scaledMarginLow, shift);
+        if (pScaledMarginHigh != &scaledMarginLow)
+            BigInt_Multiply2(pScaledMarginHigh, scaledMarginLow);*/
+    }
+
+    int digitsNum = 0;
+    int currentDigit = 0;
+    while (BigNum::compare(scaledNumerator, 0) > 0 && digitsNum < count)
+    {
+        currentDigit = BigNum::divdeRoundDown(&scaledNumerator, scaledDenominator);
+        if (digitsNum + 1 == count)
+        {
+            break;
+        }
+
+        if (currentDigit != 0 || digitsNum > 0)
+        {
+            digits[digitsNum] = '0' + currentDigit;
+            ++digitsNum;
+        }
+
+        /*BigNum tempNumerator;
+        BigNum multipliedDenominator;
+        BigNum::multiply(scaledDenominator, currentDigit, multipliedDenominator);
+        BigNum::subtract(scaledNumerator, multipliedDenominator, tempNumerator);*/
+
+        BigNum newNumerator;
+        BigNum::multiply(scaledNumerator, (uint32_t)10, newNumerator);
+
+        scaledNumerator = newNumerator;
+    }
+
+    // Set last digit. We need to decide round down or round up.
+    // round to the closest digit by comparing value with 0.5. To do this we need to convert
+    // the inequality to large integer values.
+    //  compare( value, 0.5 )
+    //  = compare( scaledNumerator / scaledDenominator, 0.5 )
+    //  = compare( scaledNumerator, 0.5 * scaledDenominator)
+    //  = compare(2 * scaledNumberator, scaledDenominator)
+    BigNum tempScaledNumerator;
+    BigNum::multiply(scaledNumerator, 2, tempScaledNumerator);
+
+    int compareResult = BigNum::compare(tempScaledNumerator, scaledDenominator);
+    bool isRoundDown = compareResult < 0;
+
+    // if we are directly in the middle, round towards the even digit (i.e. IEEE rouding rules)
+    if (compareResult == 0)
+    {
+        isRoundDown = (currentDigit & 1) == 0;
+    }
+
+    if (isRoundDown)
+    {
+        digits[digitsNum] = '0' + currentDigit;
+        ++digitsNum;
+    }
+    else
+    {
+        char* pCurDigit = digits + digitsNum;
+
+        // handle rounding up
+        if (currentDigit == 9)
+        {
+            // find the first non-nine prior digit
+            for (;;)
+            {
+                // if we are at the first digit
+                if (pCurDigit == digits)
+                {
+                    // output 1 at the next highest exponent
+                    *pCurDigit = '1';
+                    ++digitsNum;
+                    *dec += 1;
+                    break;
+                }
+
+                --pCurDigit;
+                if (*pCurDigit != '9')
+                {
+                    // increment the digit
+                    *pCurDigit += 1;
+                    ++digitsNum;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            // values in the range [0,8] can perform a simple round up
+            *pCurDigit = '0' + currentDigit + 1;
+            ++digitsNum;
+        }
+    }
+
+    if (digitsNum < count)
+    {
+        memset(digits + digitsNum, '0', count - digitsNum);
+    }
+
+    digits[count] = '\0';
+
     *sign = ((FPDOUBLE*)&value)->sign;
 
     return digits;
@@ -739,10 +991,15 @@ void DoubleToNumber(double value, int precision, NUMBER* number)
     }
 }
 
+uint64_t getMantissa(double d)
+{
+    return (*(uint64_t*)&d) & 0x000FFFFFFFFFFFFF;
+}
+
 int main()
 {
     BigNum r;
-    r.setUInt64(1111111111111111111);
+    r.setUInt64(100);
 
     BigNum r2;
     r2.setUInt32(100);
@@ -752,8 +1009,12 @@ int main()
 
     //BigNum d = m_power10BigNumTable[0];
     NUMBER number;
-    //DoubleToNumber(7.9228162514264338e+28, 15, &number);
-    DoubleToNumber(122.5, 15, &number);
+
+    //uint64_t dd = getMantissa(7.9228162514264339123);
+    //DoubleToNumber(7.9228162514264338e+28, 17, &number);
+    //DoubleToNumber(70.9228162514264339123, 17, &number);
+    //DoubleToNumber(70.9228162514264339123, 27, &number);
+    DoubleToNumber(-1.79769313486231E+308, 17, &number);
 
     return 0;
 }
