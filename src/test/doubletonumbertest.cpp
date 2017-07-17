@@ -161,3 +161,27 @@ TEST_F(DoubleToNumberTestFixture, TrailingNinesRoundTripTest)
     DoubleToNumberTestFixture::assertResult(expected, L"10010000000000000", actual2);
     DoubleToNumberTestFixture::assertResult(expected, L"10000000000000000", actual3);
 }
+
+TEST_F(DoubleToNumberTestFixture, SmallestAbsoluteValueNormalTest)
+{
+    // NOTE: .NET Core's double.ToString("R") has a logic:
+    // Try to convert by precision 15, if the value can be converted back to double,
+    // we stop. Otherwise we try precision 17.
+    //
+    // For this smallest value, the string converted by precision 15 is good enough
+    // to be converted back to its original double, so double.ToString("R") will use
+    // precision 15 result. So here we just test the precision 15 result.
+
+    // Prepare
+    NUMBER expected;
+    expected.precision = 15;
+    expected.scale = -324;
+    expected.sign = 0;
+
+    // Act
+    NUMBER actual;
+    DoubleToNumber(pow(0.5, 1074), 15, &actual);
+
+    // Assert
+    DoubleToNumberTestFixture::assertResult(expected, L"494065645841247", actual);
+}
