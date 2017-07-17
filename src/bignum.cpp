@@ -72,7 +72,7 @@ int BigNum::compare(const BigNum& lhs, uint32_t value)
 {
     if (lhs.m_len == 0)
     {
-        return -1;
+        return value == 0 ? 0 : -1;
     }
 
     uint32_t lhsValue = lhs.m_blocks[0];

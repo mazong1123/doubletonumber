@@ -250,7 +250,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
     while (BigNum::compare(scaledNumerator, 0) > 0 && digitsNum < count)
     {
         currentDigit = BigNum::divdeRoundDown(&scaledNumerator, scaledDenominator);
-        if (digitsNum + 1 == count)
+        if (BigNum::compare(scaledNumerator, 0) == 0 || digitsNum + 1 == count)
         {
             break;
         }
