@@ -357,35 +357,7 @@ uint32_t BigNum::heuristicDivide(BigNum* pDividend, const BigNum& divisor)
 
 void BigNum::multiply(uint32_t value)
 {
-    if (m_len == 0)
-    {
-        return;
-    }
-
-    if (m_len < BIGSIZE)
-    {
-        // Set the highest + 1 bit to zero so that
-        // we can check if there's a carry later.
-        m_blocks[m_len] = 0;
-    }
-
-    uint32_t* pCurrent = m_blocks;
-    uint32_t* pEnd = pCurrent + m_len;
-    uint64_t carry = 0;
-
-    while (pCurrent != pEnd)
-    {
-        uint64_t product = (uint64_t)(*pCurrent) * (uint64_t)value + carry;
-        carry = product >> 32;
-        *pCurrent = (uint32_t)(product & 0xFFFFFFFF);
-
-        ++pCurrent;
-    }
-
-    if (m_len < BIGSIZE && m_blocks[m_len] != 0)
-    {
-        ++m_len;
-    }
+    multiply(*this, value, *this);
 }
 
 void BigNum::multiply(const BigNum& lhs, uint32_t value, BigNum& result)
