@@ -355,6 +355,39 @@ uint32_t BigNum::heuristicDivide(BigNum* pDividend, const BigNum& divisor)
     return quotient;
 }
 
+void BigNum::multiply(uint32_t value)
+{
+    if (m_len == 0)
+    {
+        return;
+    }
+
+    if (m_len < BIGSIZE)
+    {
+        // Set the highest + 1 bit to zero so that
+        // we can check if there's a carry later.
+        m_blocks[m_len] = 0;
+    }
+
+    uint32_t* pCurrent = m_blocks;
+    uint32_t* pEnd = pCurrent + m_len;
+    uint64_t carry = 0;
+
+    while (pCurrent != pEnd)
+    {
+        uint64_t product = (uint64_t)(*pCurrent) * (uint64_t)value + carry;
+        carry = product >> 32;
+        *pCurrent = (uint32_t)(product & 0xFFFFFFFF);
+
+        ++pCurrent;
+    }
+
+    if (m_len < BIGSIZE && m_blocks[m_len] != 0)
+    {
+        ++m_len;
+    }
+}
+
 void BigNum::multiply(const BigNum& lhs, uint32_t value, BigNum& result)
 {
     if (lhs.m_len == 0)
@@ -362,8 +395,12 @@ void BigNum::multiply(const BigNum& lhs, uint32_t value, BigNum& result)
         return;
     }
 
-    // Zero out result internal blocks.
-    memset(result.m_blocks, 0, sizeof(uint32_t) * BIGSIZE);
+    if (lhs.m_len < BIGSIZE)
+    {
+        // Set the highest + 1 bit to zero so that
+        // we can check if there's a carry later.
+        result.m_blocks[lhs.m_len] = 0;
+    }
 
     const uint32_t* pCurrent = lhs.m_blocks;
     const uint32_t* pEnd = pCurrent + lhs.m_len;
@@ -451,6 +488,24 @@ void BigNum::multiply(const BigNum& lhs, const BigNum& rhs, BigNum& result)
     {
         result.m_len = maxResultLength;
     }
+}
+
+bool BigNum::isZero()
+{
+    if (m_len == 0)
+    {
+        return true;
+    }
+
+    for (uint8_t i = 0; i < m_len; ++i)
+    {
+        if (m_blocks[i] != 0)
+        {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 void BigNum::setUInt32(uint32_t value)

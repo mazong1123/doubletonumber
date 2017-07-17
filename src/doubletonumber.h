@@ -36,7 +36,7 @@ char * __cdecl
 _ecvt2(double value, int count, int * dec, int * sign)
 {
     // Step 1: 
-    // extract meta data from the input double value.
+    // Extract meta data from the input double value.
     //
     // Refer to IEEE double precision floating point format.
     uint64_t realMantissa = 0;
@@ -115,9 +115,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
     }
     else
     {
-        BigNum temp;
-        BigNum::multiply(scaledNumerator, 10, temp);
-        scaledNumerator = temp;
+        scaledNumerator.multiply(10);
     }
 
     *dec = firstDigitExponent - 1;
@@ -133,7 +131,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
     while (true)
     {
         currentDigit = BigNum::heuristicDivide(&scaledNumerator, scaledDenominator);
-        if (BigNum::compare(scaledNumerator, 0) == 0 || digitsNum + 1 == count)
+        if (scaledNumerator.isZero() || digitsNum + 1 == count)
         {
             break;
         }
@@ -141,10 +139,12 @@ _ecvt2(double value, int count, int * dec, int * sign)
         digits[digitsNum] = '0' + currentDigit;
         ++digitsNum;
 
-        BigNum newNumerator;
-        BigNum::multiply(scaledNumerator, (uint32_t)10, newNumerator);
+        //BigNum newNumerator;
+        //scaledNumerator.multiply(10);
+        //BigNum::multiply(scaledNumerator, (uint32_t)10, newNumerator);
+        scaledNumerator.multiply(10);
 
-        scaledNumerator = newNumerator;
+        //scaledNumerator = newNumerator;
     }
 
     // Step 5:

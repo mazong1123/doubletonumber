@@ -29,6 +29,9 @@ public:
     static void multiply(const BigNum& lhs, uint32_t value, BigNum& result);
     static void multiply(const BigNum& lhs, const BigNum& rhs, BigNum& result);
 
+    bool isZero();
+
+    void multiply(uint32_t value);
     void setUInt32(uint32_t value);
     void setUInt64(uint64_t value);
     void extendBlock(uint32_t newBlock);
