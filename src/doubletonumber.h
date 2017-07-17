@@ -139,12 +139,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
         digits[digitsNum] = '0' + currentDigit;
         ++digitsNum;
 
-        //BigNum newNumerator;
-        //scaledNumerator.multiply(10);
-        //BigNum::multiply(scaledNumerator, (uint32_t)10, newNumerator);
         scaledNumerator.multiply(10);
-
-        //scaledNumerator = newNumerator;
     }
 
     // Step 5:
