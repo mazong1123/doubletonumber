@@ -32,60 +32,6 @@ struct FPDOUBLE
 #endif
 };
 
-void uint64ShiftLeft(uint64_t input, int shift, BigNum& output)
-{
-    /*BigNum rr;
-    BigNum b1;
-    b1.setUInt64(4294967295);
-
-    BigNum b2;
-    b2.setUInt32(100);
-
-    BigNum::multiply(b1, b2, rr);*/
-
-    int shiftBlocks = shift / 32;
-    int remaningToShiftBits = shift % 32;
-
-    for (int i = 0; i < shiftBlocks; ++i)
-    {
-        // If blocks shifted, we should fill the corresponding blocks with zero.
-        output.extendBlock(0);
-    }
-
-    if (remaningToShiftBits == 0)
-    {
-        // We shift 32 * n (n >= 1) bits. No remaining bits.
-        output.extendBlock((uint32_t)(input & 0xFFFFFFFF));
-
-        uint32_t highBits = (uint32_t)(input >> 32);
-        if (highBits != 0)
-        {
-            output.extendBlock(highBits);
-        }
-    }
-    else
-    {
-        // Extract the high position bits which would be shifted out of range.
-        uint32_t highPositionBits = (uint32_t)input >> (32 + 32 - remaningToShiftBits);
-
-        // Shift the input. The result should be stored to current block.
-        uint64_t shiftedInput = input << remaningToShiftBits;
-        output.extendBlock(shiftedInput & 0xFFFFFFFF);
-
-        uint32_t highBits = (uint32_t)(input >> 32);
-        if (highBits != 0)
-        {
-            output.extendBlock(highBits);
-        }
-
-        if (highPositionBits != 0)
-        {
-            // If the high position bits is not 0, we should store them to next block.
-            output.extendBlock(highPositionBits);
-        }
-    }
-}
-
 double log10F(double v)
 {
     return 0;
@@ -152,9 +98,6 @@ uint32_t logBase2(uint64_t val)
 char * __cdecl
 _ecvt2(double value, int count, int * dec, int * sign)
 {
-    //BigNum test;
-    //shortShiftLeft((uint64_t)8796093022207, 40, &test);
-    //shortShiftLeft((uint64_t)100, 3, &test);
     uint64_t realMantissa = ((uint64_t)(((FPDOUBLE*)&value)->mantHi) << 32) | ((FPDOUBLE*)&value)->mantLo;
     int realExponent = -1074;
     uint32_t mantissaHighBitIdx = 0;
@@ -180,17 +123,19 @@ _ecvt2(double value, int count, int * dec, int * sign)
     if (realExponent > 0)
     {
         numerator.setUInt64(realMantissa);
-        BigNum::bigIntShiftLeft(&numerator, realExponent);
+        BigNum::shiftLeft(&numerator, realExponent);
+
+        // Explanation:
         // value = (realMantissa * 2^realExponent) / (1)
-        //uint64ShiftLeft(4 * realMantissa, realExponent, numerator);
         denominator.setUInt64(1);
     }
     else
     {
+        // Explanation:
         // value = (realMantissa * 2^realExponent) / (1)
         //       = (realMantissa / 2^(-realExponent)
         numerator.setUInt64(realMantissa);
-        uint64ShiftLeft(1, -realExponent, denominator);
+        BigNum::shiftLeft(1, -realExponent, denominator);
     }
 
     // TODO: Avoid copies!
@@ -236,20 +181,15 @@ _ecvt2(double value, int count, int * dec, int * sign)
         uint32_t hiBlockLog2 = logBase2(hiBlock);
         uint32_t shift = (32 + 27 - hiBlockLog2) % 32;
 
-        BigNum::bigIntShiftLeft(&scaledDenominator, shift);
-        BigNum::bigIntShiftLeft(&scaledNumerator, shift);
-        /*BigInt_ShiftLeft(&scale, shift);
-        BigInt_ShiftLeft(&scaledValue, shift);
-        BigInt_ShiftLeft(&scaledMarginLow, shift);
-        if (pScaledMarginHigh != &scaledMarginLow)
-        BigInt_Multiply2(pScaledMarginHigh, scaledMarginLow);*/
+        BigNum::shiftLeft(&scaledDenominator, shift);
+        BigNum::shiftLeft(&scaledNumerator, shift);
     }
 
     int digitsNum = 0;
     int currentDigit = 0;
     while (BigNum::compare(scaledNumerator, 0) > 0 && digitsNum < count)
     {
-        currentDigit = BigNum::divdeRoundDown(&scaledNumerator, scaledDenominator);
+        currentDigit = BigNum::heuristicDivide(&scaledNumerator, scaledDenominator);
         if (BigNum::compare(scaledNumerator, 0) == 0 || digitsNum + 1 == count)
         {
             break;

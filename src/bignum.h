@@ -20,9 +20,10 @@ public:
     static int compare(const BigNum& lhs, uint32_t value);
     static int compare(const BigNum& lhs, const BigNum& rhs);
 
-    static void bigIntShiftLeft(BigNum* pResult, uint32_t shift);
+    static void shiftLeft(uint64_t input, int shift, BigNum& output);
+    static void shiftLeft(BigNum* pResult, uint32_t shift);
     static void pow10(int exp, BigNum& result);
-    static uint32_t divdeRoundDown(BigNum* pDividend, const BigNum& divisor);
+    static uint32_t heuristicDivide(BigNum* pDividend, const BigNum& divisor);
     static void subtract(const BigNum& lhs, const BigNum& rhs, BigNum& result);
     static void multiply(const BigNum& lhs, uint32_t value, BigNum& result);
     static void multiply(const BigNum& lhs, const BigNum& rhs, BigNum& result);

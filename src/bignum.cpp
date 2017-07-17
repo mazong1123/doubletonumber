@@ -118,7 +118,52 @@ int BigNum::compare(const BigNum& lhs, const BigNum& rhs)
     return 0;
 }
 
-void BigNum::bigIntShiftLeft(BigNum* pResult, uint32_t shift)
+void BigNum::shiftLeft(uint64_t input, int shift, BigNum& output)
+{
+    int shiftBlocks = shift / 32;
+    int remaningToShiftBits = shift % 32;
+
+    for (int i = 0; i < shiftBlocks; ++i)
+    {
+        // If blocks shifted, we should fill the corresponding blocks with zero.
+        output.extendBlock(0);
+    }
+
+    if (remaningToShiftBits == 0)
+    {
+        // We shift 32 * n (n >= 1) bits. No remaining bits.
+        output.extendBlock((uint32_t)(input & 0xFFFFFFFF));
+
+        uint32_t highBits = (uint32_t)(input >> 32);
+        if (highBits != 0)
+        {
+            output.extendBlock(highBits);
+        }
+    }
+    else
+    {
+        // Extract the high position bits which would be shifted out of range.
+        uint32_t highPositionBits = (uint32_t)input >> (32 + 32 - remaningToShiftBits);
+
+        // Shift the input. The result should be stored to current block.
+        uint64_t shiftedInput = input << remaningToShiftBits;
+        output.extendBlock(shiftedInput & 0xFFFFFFFF);
+
+        uint32_t highBits = (uint32_t)(input >> 32);
+        if (highBits != 0)
+        {
+            output.extendBlock(highBits);
+        }
+
+        if (highPositionBits != 0)
+        {
+            // If the high position bits is not 0, we should store them to next block.
+            output.extendBlock(highPositionBits);
+        }
+    }
+}
+
+void BigNum::shiftLeft(BigNum* pResult, uint32_t shift)
 {
     uint32_t shiftBlocks = shift / 32;
     uint32_t shiftBits = shift % 32;
@@ -218,7 +263,7 @@ void BigNum::pow10(int exp, BigNum& result)
     result = *pCurrentTemp;
 }
 
-uint32_t BigNum::divdeRoundDown(BigNum* pDividend, const BigNum& divisor)
+uint32_t BigNum::heuristicDivide(BigNum* pDividend, const BigNum& divisor)
 {
     uint32_t len = divisor.m_len;
     if (pDividend->m_len < len)
