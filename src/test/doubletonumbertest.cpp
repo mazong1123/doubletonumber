@@ -185,3 +185,44 @@ TEST_F(DoubleToNumberTestFixture, SmallestAbsoluteValueNormalTest)
     // Assert
     DoubleToNumberTestFixture::assertResult(expected, L"494065645841247", actual);
 }
+
+TEST_F(DoubleToNumberTestFixture, SpecialRoundTripTest)
+{
+    // Prepare
+    NUMBER expected;
+    expected.precision = 17;
+    expected.scale = -1;
+    expected.sign = 0;
+
+    // Act
+    NUMBER actual;
+    DoubleToNumber(0.84551240822557006, 17, &actual);
+
+    // Assert
+    DoubleToNumberTestFixture::assertResult(expected, L"84551240822557006", actual);
+}
+
+TEST_F(DoubleToNumberTestFixture, TrailingZeroTest)
+{
+    // Prepare
+    NUMBER expected;
+    expected.precision = 17;
+    expected.scale = 0;
+    expected.sign = 0;
+
+    NUMBER expected2;
+    expected2.precision = 17;
+    expected2.scale = 1;
+    expected2.sign = 0;
+
+    // Act
+    NUMBER actual;
+    DoubleToNumber(1.0, 17, &actual);
+
+    NUMBER actual2;
+    DoubleToNumber(10.0, 17, &actual2);
+
+    // Assert
+    DoubleToNumberTestFixture::assertResult(expected, L"10000000000000000", actual);
+    DoubleToNumberTestFixture::assertResult(expected2, L"10000000000000000", actual2);
+}
