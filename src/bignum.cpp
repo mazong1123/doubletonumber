@@ -229,7 +229,7 @@ uint32_t BigNum::divdeRoundDown(BigNum* pDividend, const BigNum& divisor)
     const uint32_t* pFinalDivisorBlock = divisor.m_blocks + len - 1;
     uint32_t* pFinalDividendBlock = pDividend->m_blocks + len - 1;
 
-    uint32_t quotient = *pFinalDividendBlock / *pFinalDivisorBlock;
+    uint32_t quotient = *pFinalDividendBlock / (*pFinalDivisorBlock + 1);
     // Divide out the estimated quotient
     if (quotient != 0)
     {

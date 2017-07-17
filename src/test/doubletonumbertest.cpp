@@ -122,7 +122,23 @@ TEST_F(DoubleToNumberTestFixture, RoundingTest)
     DoubleToNumberTestFixture::assertResult(expected, L"31415926535897940", actual2);
 }
 
-TEST_F(DoubleToNumberTestFixture, TrailingNinesTest)
+TEST_F(DoubleToNumberTestFixture, ComplexRoundingTest)
+{
+    // Prepare
+    NUMBER expected;
+    expected.precision = 17;
+    expected.scale = 19;
+    expected.sign = 0;
+
+    // Act
+    NUMBER actual;
+    DoubleToNumber(29999999999999792458.0, 17, &actual);
+
+    // Assert
+    DoubleToNumberTestFixture::assertResult(expected, L"29999999999999791", actual);
+}
+
+TEST_F(DoubleToNumberTestFixture, TrailingNinesRoundTripTest)
 {
     // Prepare
     NUMBER expected;
@@ -137,7 +153,11 @@ TEST_F(DoubleToNumberTestFixture, TrailingNinesTest)
     NUMBER actual2;
     DoubleToNumber(1000.9999999999999999999, 17, &actual2);
 
+    NUMBER actual3;
+    DoubleToNumber(999.99999999999999999999, 17, &actual3);
+
     // Assert
     DoubleToNumberTestFixture::assertResult(expected, L"10005000000000000", actual);
     DoubleToNumberTestFixture::assertResult(expected, L"10010000000000000", actual2);
+    DoubleToNumberTestFixture::assertResult(expected, L"10000000000000000", actual3);
 }
