@@ -83,7 +83,7 @@ TEST_F(DoubleToNumberTestFixture, SmallNumberGreaterThanOneRoundTripTest)
     DoubleToNumber(70.9228162514264339123, 17, &actual);
 
     // Assert
-    DoubleToNumberTestFixture::assertResult(expected, L"7092281625142644", actual);
+    DoubleToNumberTestFixture::assertResult(expected, L"70922816251426440", actual);
 }
 
 TEST_F(DoubleToNumberTestFixture, SmallNumberGreaterThanOneNormalTest)

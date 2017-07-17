@@ -32,11 +32,6 @@ struct FPDOUBLE
 #endif
 };
 
-double log10F(double v)
-{
-    return 0;
-}
-
 uint32_t logBase2(uint32_t val)
 {
     static const uint8_t logTable[256] =
@@ -98,26 +93,41 @@ uint32_t logBase2(uint64_t val)
 char * __cdecl
 _ecvt2(double value, int count, int * dec, int * sign)
 {
-    uint64_t realMantissa = ((uint64_t)(((FPDOUBLE*)&value)->mantHi) << 32) | ((FPDOUBLE*)&value)->mantLo;
-    int realExponent = -1074;
+    // Step 1: 
+    // extract meta data from the input double value.
+    //
+    // Refer to IEEE double precision floating point format.
+    uint64_t realMantissa = 0;
+    int realExponent = 0;
     uint32_t mantissaHighBitIdx = 0;
     if (((FPDOUBLE*)&value)->exp > 0)
     {
-        realMantissa += ((uint64_t)1 << 52);
+        realMantissa = ((uint64_t)(((FPDOUBLE*)&value)->mantHi) << 32) | ((FPDOUBLE*)&value)->mantLo + ((uint64_t)1 << 52);
         realExponent = ((FPDOUBLE*)&value)->exp - 1075;
         mantissaHighBitIdx = 52;
     }
     else
     {
+        realMantissa = ((uint64_t)(((FPDOUBLE*)&value)->mantHi) << 32) | ((FPDOUBLE*)&value)->mantLo;
+        realExponent = -1074;
         mantissaHighBitIdx = logBase2(realMantissa);
     }
 
     char* digits = (char *)malloc(count + 1);
-    memset(digits, 0, count + 1);
+    //memset(digits, '0', count);
 
-    const double log10_2 = 0.30102999566398119521373889472449;
-    int firstDigitExponent = (int)(ceil(double((int)mantissaHighBitIdx + realExponent) * log10_2 - 0.69));
+    // Step 2:
+    // Calculate the first digit exponent. We should estimate the exponent and then verify it later.
+    //
+    // This is an improvement of the estimation in the original paper.
+    // Inspired by http://www.ryanjuckett.com/programming/printing-floating-point-numbers/
+    const double log10V2 = 0.30102999566398119521373889472449;
+    int firstDigitExponent = (int)(ceil(double((int)mantissaHighBitIdx + realExponent) * log10V2 - 0.69));
 
+    // Step 3:
+    // Store the input double value in BigNum format.
+    //
+    // To keep the precision, we represent the double value as numertor/denominator.
     BigNum numerator;
     BigNum denominator;
     if (realExponent > 0)
@@ -172,6 +182,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
     uint32_t hiBlock = scaledDenominator.getBlockValue(scaledDenominator.length() - 1);
     if (hiBlock < 8 || hiBlock > 429496729)
     {
+        // Inspired by http://www.ryanjuckett.com/programming/printing-floating-point-numbers/
         // Perform a bit shift on all values to get the highest block of the denominator into
         // the range [8,429496729]. We are more likely to make accurate quotient estimations
         // in BigInt_DivideWithRemainder_MaxQuotient9() with higher denominator values so
@@ -185,6 +196,10 @@ _ecvt2(double value, int count, int * dec, int * sign)
         BigNum::shiftLeft(&scaledNumerator, shift);
     }
 
+    // Step 4:
+    // Calculate digits.
+    //
+    // Output digits until reaching the precision or the numerator becomes zero.
     int digitsNum = 0;
     int currentDigit = 0;
     while (BigNum::compare(scaledNumerator, 0) > 0 && digitsNum < count)
@@ -201,20 +216,16 @@ _ecvt2(double value, int count, int * dec, int * sign)
             ++digitsNum;
         }
 
-        /*BigNum tempNumerator;
-        BigNum multipliedDenominator;
-        BigNum::multiply(scaledDenominator, currentDigit, multipliedDenominator);
-        BigNum::subtract(scaledNumerator, multipliedDenominator, tempNumerator);*/
-
         BigNum newNumerator;
         BigNum::multiply(scaledNumerator, (uint32_t)10, newNumerator);
 
         scaledNumerator = newNumerator;
     }
 
-    // Set last digit. We need to decide round down or round up.
-    // round to the closest digit by comparing value with 0.5. To do this we need to convert
-    // the inequality to large integer values.
+    // Step 5:
+    // Set last digit.
+    //
+    // We round to the closest digit by comparing value with 0.5:
     //  compare( value, 0.5 )
     //  = compare( scaledNumerator / scaledDenominator, 0.5 )
     //  = compare( scaledNumerator, 0.5 * scaledDenominator)
@@ -225,7 +236,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
     int compareResult = BigNum::compare(tempScaledNumerator, scaledDenominator);
     bool isRoundDown = compareResult < 0;
 
-    // if we are directly in the middle, round towards the even digit (i.e. IEEE rouding rules)
+    // We are in the middle, round towards the even digit (i.e. IEEE rouding rules)
     if (compareResult == 0)
     {
         isRoundDown = (currentDigit & 1) == 0;
@@ -240,7 +251,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
     {
         char* pCurDigit = digits + digitsNum;
 
-        // handle rounding up
+        // Rounding up for 9 is special
         if (currentDigit == 9)
         {
             // find the first non-nine prior digit
@@ -257,6 +268,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
                 }
 
                 --pCurDigit;
+                --digitsNum;
                 if (*pCurDigit != '9')
                 {
                     // increment the digit
@@ -268,7 +280,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
         }
         else
         {
-            // values in the range [0,8] can perform a simple round up
+            // It's simple if the digit is not 9.
             *pCurDigit = '0' + currentDigit + 1;
             ++digitsNum;
         }
@@ -279,7 +291,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
         memset(digits + digitsNum, '0', count - digitsNum);
     }
 
-    digits[count] = '\0';
+    digits[count] = 0;
 
     *sign = ((FPDOUBLE*)&value)->sign;
 
