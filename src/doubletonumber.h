@@ -56,15 +56,16 @@ _ecvt2(double value, int count, int * dec, int * sign)
     }
 
     char* digits = (char *)malloc(count + 1);
-    //memset(digits, '0', count);
 
     // Step 2:
     // Calculate the first digit exponent. We should estimate the exponent and then verify it later.
     //
     // This is an improvement of the estimation in the original paper.
     // Inspired by http://www.ryanjuckett.com/programming/printing-floating-point-numbers/
-    const double log10V2 = 0.30102999566398119521373889472449;
-    int firstDigitExponent = (int)(ceil(double((int)mantissaHighBitIdx + realExponent) * log10V2 - 0.69));
+    //
+    // 0.30102999566398119521373889472449 = log10V2
+    // 0.69 = 1 - log10V2 - epsilon (a small number account for drift of floating point multiplication)
+    int firstDigitExponent = (int)(ceil(double((int)mantissaHighBitIdx + realExponent) * 0.30102999566398119521373889472449 - 0.69));
 
     // Step 3:
     // Store the input double value in BigNum format.
@@ -126,10 +127,10 @@ _ecvt2(double value, int count, int * dec, int * sign)
     // Step 4:
     // Calculate digits.
     //
-    // Output digits until reaching the precision or the numerator becomes zero.
+    // Output digits until reaching the last but one precision or the numerator becomes zero.
     int digitsNum = 0;
     int currentDigit = 0;
-    while (BigNum::compare(scaledNumerator, 0) > 0 && digitsNum < count)
+    while (true)
     {
         currentDigit = BigNum::heuristicDivide(&scaledNumerator, scaledDenominator);
         if (BigNum::compare(scaledNumerator, 0) == 0 || digitsNum + 1 == count)
@@ -137,11 +138,8 @@ _ecvt2(double value, int count, int * dec, int * sign)
             break;
         }
 
-        if (currentDigit != 0 || digitsNum > 0)
-        {
-            digits[digitsNum] = '0' + currentDigit;
-            ++digitsNum;
-        }
+        digits[digitsNum] = '0' + currentDigit;
+        ++digitsNum;
 
         BigNum newNumerator;
         BigNum::multiply(scaledNumerator, (uint32_t)10, newNumerator);
@@ -150,7 +148,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
     }
 
     // Step 5:
-    // Set last digit.
+    // Set the last digit.
     //
     // We round to the closest digit by comparing value with 0.5:
     //  compare( value, 0.5 )
