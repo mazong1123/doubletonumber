@@ -32,64 +32,6 @@ struct FPDOUBLE
 #endif
 };
 
-uint32_t logBase2(uint32_t val)
-{
-    static const uint8_t logTable[256] =
-    {
-        0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
-        4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7
-    };
-
-    uint32_t temp;
-
-    temp = val >> 24;
-    if (temp)
-    {
-        return 24 + logTable[temp];
-    }
-
-    temp = val >> 16;
-    if (temp)
-    {
-        return 16 + logTable[temp];
-    }
-
-    temp = val >> 8;
-    if (temp)
-    {
-        return 8 + logTable[temp];
-    }
-
-    return logTable[val];
-}
-
-uint32_t logBase2(uint64_t val)
-{
-    uint64_t temp;
-
-    temp = val >> 32;
-    if (temp)
-    {
-        return 32 + logBase2((uint32_t)temp);
-    }
-
-    return logBase2((uint32_t)val);
-}
-
 char * __cdecl
 _ecvt2(double value, int count, int * dec, int * sign)
 {
@@ -110,7 +52,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
     {
         realMantissa = ((uint64_t)(((FPDOUBLE*)&value)->mantHi) << 32) | ((FPDOUBLE*)&value)->mantLo;
         realExponent = -1074;
-        mantissaHighBitIdx = logBase2(realMantissa);
+        mantissaHighBitIdx = BigNum::logBase2(realMantissa);
     }
 
     char* digits = (char *)malloc(count + 1);
@@ -179,22 +121,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
 
     *dec = firstDigitExponent - 1;
 
-    uint32_t hiBlock = scaledDenominator.getBlockValue(scaledDenominator.length() - 1);
-    if (hiBlock < 8 || hiBlock > 429496729)
-    {
-        // Inspired by http://www.ryanjuckett.com/programming/printing-floating-point-numbers/
-        // Perform a bit shift on all values to get the highest block of the denominator into
-        // the range [8,429496729]. We are more likely to make accurate quotient estimations
-        // in BigInt_DivideWithRemainder_MaxQuotient9() with higher denominator values so
-        // we shift the denominator to place the highest bit at index 27 of the highest block.
-        // This is safe because (2^28 - 1) = 268435455 which is less than 429496729. This means
-        // that all values with a highest bit at index 27 are within range.         
-        uint32_t hiBlockLog2 = logBase2(hiBlock);
-        uint32_t shift = (32 + 27 - hiBlockLog2) % 32;
-
-        BigNum::shiftLeft(&scaledDenominator, shift);
-        BigNum::shiftLeft(&scaledNumerator, shift);
-    }
+    BigNum::prepareHeuristicDivide(&scaledNumerator, &scaledDenominator);
 
     // Step 4:
     // Calculate digits.

@@ -58,16 +58,6 @@ BigNum& BigNum::operator=(const BigNum &rhs)
     return *this;
 }
 
-uint8_t BigNum::length() const
-{
-    return m_len;
-}
-
-uint32_t BigNum::getBlockValue(uint8_t index)
-{
-    return m_blocks[index];
-}
-
 int BigNum::compare(const BigNum& lhs, uint32_t value)
 {
     if (lhs.m_len == 0)
@@ -263,9 +253,29 @@ void BigNum::pow10(int exp, BigNum& result)
     result = *pCurrentTemp;
 }
 
+void BigNum::prepareHeuristicDivide(BigNum* pDividend, BigNum* pDivisor)
+{
+    uint32_t hiBlock = pDivisor->m_blocks[pDivisor->m_len - 1];
+    if (hiBlock < 8 || hiBlock > 429496729)
+    {
+        // Inspired by http://www.ryanjuckett.com/programming/printing-floating-point-numbers/
+        // Perform a bit shift on all values to get the highest block of the divisor into
+        // the range [8,429496729]. We are more likely to make accurate quotient estimations
+        // in heuristicDivide() with higher divisor values so
+        // we shift the divisor to place the highest bit at index 27 of the highest block.
+        // This is safe because (2^28 - 1) = 268435455 which is less than 429496729. This means
+        // that all values with a highest bit at index 27 are within range.         
+        uint32_t hiBlockLog2 = logBase2(hiBlock);
+        uint32_t shift = (59 - hiBlockLog2) % 32;
+
+        BigNum::shiftLeft(pDivisor, shift);
+        BigNum::shiftLeft(pDividend, shift);
+    }
+}
+
 uint32_t BigNum::heuristicDivide(BigNum* pDividend, const BigNum& divisor)
 {
-    uint32_t len = divisor.m_len;
+    uint8_t len = divisor.m_len;
     if (pDividend->m_len < len)
     {
         return 0;
@@ -274,31 +284,35 @@ uint32_t BigNum::heuristicDivide(BigNum* pDividend, const BigNum& divisor)
     const uint32_t* pFinalDivisorBlock = divisor.m_blocks + len - 1;
     uint32_t* pFinalDividendBlock = pDividend->m_blocks + len - 1;
 
+    // This is an estimated quotient. Its error should be less than 2.
+    // Reference inequality:
+    // a/b - floor(floor(a)/(floor(b) + 1)) < 2
     uint32_t quotient = *pFinalDividendBlock / (*pFinalDivisorBlock + 1);
-    // Divide out the estimated quotient
+
     if (quotient != 0)
     {
-        // dividend = dividend - divisor*quotient
-        const uint32_t *pDivisorCur = divisor.m_blocks;
-        uint32_t *pDividendCur = pDividend->m_blocks;
+        // Now we use our estimated quotient to update each block of dividend.
+        // dividend = dividend - divisor * quotient
+        const uint32_t *pDivisorCurrent = divisor.m_blocks;
+        uint32_t *pDividendCurrent = pDividend->m_blocks;
 
         uint64_t borrow = 0;
         uint64_t carry = 0;
         do
         {
-            uint64_t product = (uint64_t)*pDivisorCur * (uint64_t)quotient + carry;
+            uint64_t product = (uint64_t)*pDivisorCurrent * (uint64_t)quotient + carry;
             carry = product >> 32;
 
-            uint64_t difference = (uint64_t)*pDividendCur - (product & 0xFFFFFFFF) - borrow;
+            uint64_t difference = (uint64_t)*pDividendCurrent - (product & 0xFFFFFFFF) - borrow;
             borrow = (difference >> 32) & 1;
 
-            *pDividendCur = difference & 0xFFFFFFFF;
+            *pDividendCurrent = difference & 0xFFFFFFFF;
 
-            ++pDivisorCur;
-            ++pDividendCur;
-        } while (pDivisorCur <= pFinalDivisorBlock);
+            ++pDivisorCurrent;
+            ++pDividendCurrent;
+        } while (pDivisorCurrent <= pFinalDivisorBlock);
 
-        // remove all leading zero blocks from dividend
+        // Remove all leading zero blocks from dividend
         while (len > 0 && pDividend->m_blocks[len - 1] == 0)
         {
             --len;
@@ -308,7 +322,7 @@ uint32_t BigNum::heuristicDivide(BigNum* pDividend, const BigNum& divisor)
     }
 
     // If the dividend is still larger than the divisor, we overshot our estimate quotient. To correct,
-    // we increment the quotient and subtract one more divisor from the dividend.
+    // we increment the quotient and subtract one more divisor from the dividend (Because we guaranteed the error range).
     if (BigNum::compare(*pDividend, divisor) >= 0)
     {
         ++quotient;
@@ -329,7 +343,7 @@ uint32_t BigNum::heuristicDivide(BigNum* pDividend, const BigNum& divisor)
             ++pDividendCur;
         } while (pDivisorCur <= pFinalDivisorBlock);
 
-        // remove all leading zero blocks from dividend
+        // Remove all leading zero blocks from dividend
         while (len > 0 && pDividend->m_blocks[len - 1] == 0)
         {
             --len;
@@ -339,73 +353,6 @@ uint32_t BigNum::heuristicDivide(BigNum* pDividend, const BigNum& divisor)
     }
 
     return quotient;
-}
-
-void BigNum::subtract(const BigNum& lhs, const BigNum& rhs, BigNum& result)
-{
-    assert(lhs.m_len >= rhs.m_len);
-    // TODO: assert lhs >= rhs.
-
-    const uint32_t* pLhsCurrent = lhs.m_blocks;
-    const uint32_t* pLhsEnd = pLhsCurrent + lhs.m_len;
-
-    const uint32_t* pRhsCurrent = rhs.m_blocks;
-    const uint32_t* pRhsEnd = rhs.m_blocks + rhs.m_len;
-
-    uint32_t* pResultCurrent = result.m_blocks;
-
-    uint8_t len = 0;
-    bool isBorrow = false;
-
-    while (pRhsCurrent != pRhsEnd)
-    {
-        if (isBorrow)
-        {
-            // TODO: may have a bug if *pLhsCurrent - 1 < *pRhsCurrent.
-            // We should add the borrowed value.
-
-            *pResultCurrent = *pLhsCurrent - *pRhsCurrent - 1;
-            isBorrow = *pRhsCurrent >= *pLhsCurrent;
-        }
-        else
-        {
-            // TODO: may have a bug if *pLhsCurrent < *pRhsCurrent.
-            // We should add the borrowed value.
-
-            *pResultCurrent = *pLhsCurrent - *pRhsCurrent;
-            isBorrow = *pRhsCurrent > *pLhsCurrent;
-        }
-
-        ++pResultCurrent;
-        ++pRhsCurrent;
-        ++pLhsCurrent;
-    }
-
-    uint8_t lenDiff = lhs.m_len - rhs.m_len;
-
-    uint8_t start = lenDiff;
-    for (uint8_t start = lenDiff; isBorrow && start > 0; --start)
-    {
-        uint32_t sub = *pLhsCurrent++;
-        *pResultCurrent++ = sub - 1;
-        isBorrow = (sub == 0);
-    }
-
-    while (start > 0)
-    {
-        *pResultCurrent++ = *pLhsCurrent++;
-        --start;
-    }
-
-    len = lhs.m_len;
-
-    while (len > 0 && *--pResultCurrent == 0)
-    {
-        --len;
-        --pResultCurrent;
-    }
-
-    result.m_len = len;
 }
 
 void BigNum::multiply(const BigNum& lhs, uint32_t value, BigNum& result)
@@ -530,4 +477,58 @@ void BigNum::extendBlock(uint32_t newBlock)
 {
     m_blocks[m_len] = newBlock;
     ++m_len;
+}
+
+uint32_t BigNum::logBase2(uint32_t val)
+{
+    static const uint8_t logTable[256] =
+    {
+        0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
+        4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7
+    };
+
+    uint32_t temp = val >> 24;
+    if (temp != 0)
+    {
+        return 24 + logTable[temp];
+    }
+
+    temp = val >> 16;
+    if (temp != 0)
+    {
+        return 16 + logTable[temp];
+    }
+
+    temp = val >> 8;
+    if (temp != 0)
+    {
+        return 8 + logTable[temp];
+    }
+
+    return logTable[val];
+}
+
+uint32_t BigNum::logBase2(uint64_t val)
+{
+    uint64_t temp = val >> 32;
+    if (temp != 0)
+    {
+        return 32 + logBase2((uint32_t)temp);
+    }
+
+    return logBase2((uint32_t)val);
 }

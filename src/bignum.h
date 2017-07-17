@@ -14,8 +14,9 @@ public:
     ~BigNum();
 
     BigNum & operator=(const BigNum &rhs);
-    uint8_t length() const;
-    uint32_t getBlockValue(uint8_t index);
+
+    static uint32_t logBase2(uint32_t val);
+    static uint32_t logBase2(uint64_t val);
 
     static int compare(const BigNum& lhs, uint32_t value);
     static int compare(const BigNum& lhs, const BigNum& rhs);
@@ -23,8 +24,8 @@ public:
     static void shiftLeft(uint64_t input, int shift, BigNum& output);
     static void shiftLeft(BigNum* pResult, uint32_t shift);
     static void pow10(int exp, BigNum& result);
+    static void prepareHeuristicDivide(BigNum* pDividend, BigNum* divisor);
     static uint32_t heuristicDivide(BigNum* pDividend, const BigNum& divisor);
-    static void subtract(const BigNum& lhs, const BigNum& rhs, BigNum& result);
     static void multiply(const BigNum& lhs, uint32_t value, BigNum& result);
     static void multiply(const BigNum& lhs, const BigNum& rhs, BigNum& result);
 
@@ -33,6 +34,7 @@ public:
     void extendBlock(uint32_t newBlock);
 
 private:
+
     static const uint8_t BIGSIZE = 35;
     static const uint8_t UINT32POWER10NUM = 8;
     static const uint8_t BIGPOWER10NUM = 6;
