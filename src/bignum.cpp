@@ -360,6 +360,15 @@ void BigNum::multiply(uint32_t value)
     multiply(*this, value, *this);
 }
 
+void BigNum::multiply(const BigNum& value)
+{
+    BigNum temp;
+    BigNum::multiply(*this, value, temp);
+
+    memcpy(m_blocks, temp.m_blocks, temp.m_len * sizeof(uint32_t));
+    m_len = temp.m_len;
+}
+
 void BigNum::multiply(const BigNum& lhs, uint32_t value, BigNum& result)
 {
     if (lhs.m_len == 0)

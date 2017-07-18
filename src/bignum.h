@@ -32,6 +32,7 @@ public:
     bool isZero();
 
     void multiply(uint32_t value);
+    void multiply(const BigNum& value);
     void setUInt32(uint32_t value);
     void setUInt64(uint64_t value);
     void extendBlock(uint32_t newBlock);

@@ -91,36 +91,32 @@ _ecvt2(double value, int count, int * dec, int * sign)
         BigNum::shiftLeft(1, -realExponent, denominator);
     }
 
-    // TODO: Avoid copies!
-    BigNum scaledNumerator = numerator;
-    BigNum scaledDenominator = denominator;
-
     if (firstDigitExponent > 0)
     {
         BigNum poweredValue;
         BigNum::pow10(firstDigitExponent, poweredValue);
-        BigNum::multiply(denominator, poweredValue, scaledDenominator);
+        denominator.multiply(poweredValue);
     }
     else if (firstDigitExponent < 0)
     {
         BigNum poweredValue;
         BigNum::pow10(-firstDigitExponent, poweredValue);
-        BigNum::multiply(numerator, poweredValue, scaledNumerator);
+        numerator.multiply(poweredValue);
     }
 
-    if (BigNum::compare(scaledNumerator, scaledDenominator) >= 0)
+    if (BigNum::compare(numerator, denominator) >= 0)
     {
         // The exponent estimation was incorrect.
         firstDigitExponent += 1;
     }
     else
     {
-        scaledNumerator.multiply(10);
+        numerator.multiply(10);
     }
 
     *dec = firstDigitExponent - 1;
 
-    BigNum::prepareHeuristicDivide(&scaledNumerator, &scaledDenominator);
+    BigNum::prepareHeuristicDivide(&numerator, &denominator);
 
     // Step 4:
     // Calculate digits.
@@ -130,8 +126,8 @@ _ecvt2(double value, int count, int * dec, int * sign)
     int currentDigit = 0;
     while (true)
     {
-        currentDigit = BigNum::heuristicDivide(&scaledNumerator, scaledDenominator);
-        if (scaledNumerator.isZero() || digitsNum + 1 == count)
+        currentDigit = BigNum::heuristicDivide(&numerator, denominator);
+        if (numerator.isZero() || digitsNum + 1 == count)
         {
             break;
         }
@@ -139,7 +135,7 @@ _ecvt2(double value, int count, int * dec, int * sign)
         digits[digitsNum] = '0' + currentDigit;
         ++digitsNum;
 
-        scaledNumerator.multiply(10);
+        numerator.multiply(10);
     }
 
     // Step 5:
@@ -147,13 +143,11 @@ _ecvt2(double value, int count, int * dec, int * sign)
     //
     // We round to the closest digit by comparing value with 0.5:
     //  compare( value, 0.5 )
-    //  = compare( scaledNumerator / scaledDenominator, 0.5 )
-    //  = compare( scaledNumerator, 0.5 * scaledDenominator)
-    //  = compare(2 * scaledNumberator, scaledDenominator)
-    BigNum tempScaledNumerator;
-    BigNum::multiply(scaledNumerator, 2, tempScaledNumerator);
-
-    int compareResult = BigNum::compare(tempScaledNumerator, scaledDenominator);
+    //  = compare( numerator / denominator, 0.5 )
+    //  = compare( numerator, 0.5 * denominator)
+    //  = compare(2 * numerator, denominator)
+    numerator.multiply(2);
+    int compareResult = BigNum::compare(numerator, denominator);
     bool isRoundDown = compareResult < 0;
 
     // We are in the middle, round towards the even digit (i.e. IEEE rouding rules)
