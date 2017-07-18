@@ -165,16 +165,16 @@ _ecvt2(double value, int count, int * dec, int * sign)
     {
         char* pCurDigit = digits + digitsNum;
 
-        // Rounding up for 9 is special
+        // Rounding up for 9 is special.
         if (currentDigit == 9)
         {
             // find the first non-nine prior digit
-            for (;;)
+            while (true)
             {
-                // if we are at the first digit
+                // If we are at the first digit
                 if (pCurDigit == digits)
                 {
-                    // output 1 at the next highest exponent
+                    // Output 1 at the next highest exponent
                     *pCurDigit = '1';
                     ++digitsNum;
                     *dec += 1;
